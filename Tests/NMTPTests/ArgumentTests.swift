@@ -96,4 +96,30 @@ struct ArgumentTests {
         let recovered = try arg.unwrap(as: String.self)
         #expect(recovered == "test")
     }
+
+    @Test("toDictionary works for known types")
+    func toDictionaryKnownTypes() throws {
+        let args: [Argument] = [
+            try Argument.wrap(key: "name", value: "Alice"),
+            try Argument.wrap(key: "count", value: 7),
+            try Argument.wrap(key: "score", value: 9.5),
+            try Argument.wrap(key: "active", value: true),
+        ]
+        let dict = args.toDictionary()
+        #expect(dict.count == 4)
+        #expect(dict["name"] as? String == "Alice")
+        #expect(dict["count"] as? Int == 7)
+        #expect(dict["score"] as? Double == 9.5)
+        #expect(dict["active"] as? Bool == true)
+    }
+
+    @Test("toDictionary skips entries that cannot be decoded as known types")
+    func toDictionarySkipsUndecodable() throws {
+        // MessagePack array type — decodes as neither String, Int, Double, nor Bool
+        let arrayArg = try Argument.wrap(key: "arr", value: [1, 2, 3])
+        let goodArg = try Argument.wrap(key: "good", value: "hello")
+        let dict = [arrayArg, goodArg].toDictionary()
+        #expect(dict["good"] as? String == "hello")
+        #expect(dict["arr"] == nil)
+    }
 }

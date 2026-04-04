@@ -8,25 +8,25 @@ import Foundation
 
 extension UUID {
 
-    public var bytes: [UInt8] {
+    var bytes: [UInt8] {
         var uuid = self.uuid
         let ptr = UnsafeBufferPointer(start: &uuid.0, count: MemoryLayout.size(ofValue: uuid))
         return .init(ptr)
     }
 
-    public var data: Data {
+    var data: Data {
         return .init(bytes)
     }
 
-    public init(bytes: ArraySlice<UInt8>) throws {
+    init(bytes: ArraySlice<UInt8>) throws {
         try self.init(bytes: [UInt8](bytes))
     }
 
-    public init(data: Data) throws {
+    init(data: Data) throws {
         try self.init(bytes: data.map { $0 })
     }
 
-    public init(bytes: [UInt8]) throws {
+    init(bytes: [UInt8]) throws {
         guard bytes.count == 16 else {
             throw NMTPError.fail(message: "UUID bytes length should be 16 bytes.")
         }
@@ -44,14 +44,16 @@ extension UUID {
 // MARK: - Integer Bytes
 
 extension FixedWidthInteger {
-    public func bytes() -> [UInt8] {
+    func bytes() -> [UInt8] {
         return withUnsafeBytes(of: self.bigEndian) { Array($0) }
     }
 }
 
 extension UInt32 {
-    public init(bytes: [UInt8]) {
-        assert(bytes.count == 4)
+    init(bytes: [UInt8]) throws {
+        guard bytes.count == 4 else {
+            throw NMTPError.fail(message: "UInt32 bytes length should be 4 bytes, got \(bytes.count).")
+        }
         self = bytes.withUnsafeBytes { $0.load(as: UInt32.self) }.bigEndian
     }
 }

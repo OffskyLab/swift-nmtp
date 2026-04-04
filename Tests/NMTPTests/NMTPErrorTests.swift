@@ -46,18 +46,25 @@ struct NMTPErrorTests {
     }
 
     @Test("UInt32 bytes round-trip")
-    func uint32BytesRoundTrip() {
+    func uint32BytesRoundTrip() throws {
         let value: UInt32 = 0xDEADBEEF
         let bytes = value.bytes()
         #expect(bytes.count == 4)
-        let recovered = UInt32(bytes: bytes)
+        let recovered = try UInt32(bytes: bytes)
         #expect(recovered == value)
     }
 
     @Test("UInt32 big-endian byte order")
-    func uint32BigEndian() {
+    func uint32BigEndian() throws {
         let value: UInt32 = 0x01020304
         let bytes = value.bytes()
         #expect(bytes == [0x01, 0x02, 0x03, 0x04])
+    }
+
+    @Test("UInt32 init with wrong byte count throws NMTPError")
+    func uint32WrongByteCountThrows() throws {
+        #expect(throws: NMTPError.self) {
+            _ = try UInt32(bytes: [0x01, 0x02])
+        }
     }
 }

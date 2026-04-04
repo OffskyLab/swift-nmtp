@@ -6,8 +6,8 @@ import Foundation
 import MessagePacker
 
 public struct Argument: Sendable {
-    public internal(set) var key: String
-    public internal(set) var data: Data
+    public let key: String
+    public let data: Data
 
     public init(key: String, data: Data) {
         self.key = key
@@ -63,6 +63,9 @@ private struct AnyDecodable: Decodable {
         if let v = try? container.decode(Int.self)     { value = v; return }
         if let v = try? container.decode(Double.self)  { value = v; return }
         if let v = try? container.decode(Bool.self)    { value = v; return }
-        value = ""
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "AnyDecodable: unsupported type — only String, Int, Double, and Bool are supported"
+        )
     }
 }

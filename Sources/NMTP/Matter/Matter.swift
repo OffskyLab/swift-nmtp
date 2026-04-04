@@ -77,7 +77,7 @@ extension Matter {
 
         let flags = bytes[6]
         let matterID = try UUID(bytes: Array(bytes[7..<23]))
-        let length = Int(UInt32(bytes: Array(bytes[23..<27])))
+        let length = Int(try UInt32(bytes: Array(bytes[23..<27])))
 
         guard bytes.count >= Matter.headerSize + length else {
             throw NMTPError.invalidMatter("Body length mismatch")
