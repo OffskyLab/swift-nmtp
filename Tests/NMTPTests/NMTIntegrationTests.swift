@@ -69,3 +69,52 @@ private struct PushHandler: NMTHandler {
         return nil
     }
 }
+
+// MARK: - PendingRequests unit tests
+
+final class PendingRequestsTests: XCTestCase {
+
+    /// register + fulfill from a concurrent Task returns the correct Matter.
+    func testFulfillReturnsCorrectMatter() async throws {
+        let pending = PendingRequests()
+        let expected = Matter(type: .reply, body: Data("hello".utf8))
+
+        let received: Matter = try await withCheckedThrowingContinuation { continuation in
+            pending.register(id: expected.matterID, continuation: continuation)
+            Task { pending.fulfill(expected) }
+        }
+
+        XCTAssertEqual(received.matterID, expected.matterID)
+        XCTAssertEqual(received.body, Data("hello".utf8))
+    }
+
+    /// fulfill with an unknown UUID returns false and does not crash.
+    func testFulfillUnknownIdReturnsFalse() {
+        let pending = PendingRequests()
+        let unknown = Matter(type: .call, body: Data())
+        XCTAssertFalse(pending.fulfill(unknown))
+    }
+
+    /// failAll resumes every registered continuation with the given error.
+    func testFailAllResumesAllContinuations() async throws {
+        let pending = PendingRequests()
+        let ids = (0..<5).map { _ in UUID() }
+
+        await withThrowingTaskGroup(of: Void.self) { group in
+            for id in ids {
+                group.addTask {
+                    do {
+                        let _: Matter = try await withCheckedThrowingContinuation { cont in
+                            pending.register(id: id, continuation: cont)
+                        }
+                        XCTFail("Expected connectionClosed error")
+                    } catch let e as NMTPError {
+                        XCTAssertEqual(e, NMTPError.connectionClosed)
+                    }
+                }
+            }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            pending.failAll(error: NMTPError.connectionClosed)
+        }
+    }
+}

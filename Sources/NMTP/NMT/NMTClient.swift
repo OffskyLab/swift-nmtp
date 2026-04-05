@@ -1,7 +1,7 @@
 import Foundation
 import NIO
 
-public final class NMTClient: @unchecked Sendable {
+public final class NMTClient: Sendable {
     public let targetAddress: SocketAddress
     public let pushes: AsyncStream<Matter>
 
@@ -75,7 +75,7 @@ extension NMTClient {
 }
 
 // MARK: - Inbound Handler
-private final class NMTClientInboundHandler: ChannelInboundHandler, @unchecked Sendable {
+private final class NMTClientInboundHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Matter
     private let pendingRequests: PendingRequests
     private let pushContinuation: AsyncStream<Matter>.Continuation

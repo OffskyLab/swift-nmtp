@@ -58,7 +58,7 @@ extension NMTServer {
 }
 
 // MARK: - Inbound Handler
-private final class NMTServerInboundHandler: ChannelInboundHandler, @unchecked Sendable {
+private final class NMTServerInboundHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Matter
     typealias OutboundOut = Matter
     private let handler: any NMTHandler

@@ -6,7 +6,9 @@ import Foundation
 
 // MARK: - Clone
 
-public struct CloneBody: Codable, Sendable {}
+public struct CloneBody: Codable, Sendable {
+    public init() {}
+}
 
 public struct CloneReplyBody: Codable, Sendable {
     public var identifier: String
