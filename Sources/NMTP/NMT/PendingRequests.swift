@@ -1,8 +1,8 @@
 import Foundation
-import Synchronization
+import os
 
 final class PendingRequests: Sendable {
-    private let waiting: Mutex<[UUID: CheckedContinuation<Matter, Error>]> = Mutex([:])
+    private let waiting = OSAllocatedUnfairLock<[UUID: CheckedContinuation<Matter, Error>]>(initialState: [:])
 
     func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
         waiting.withLock { $0[id] = continuation }
