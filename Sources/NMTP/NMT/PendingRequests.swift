@@ -1,16 +1,8 @@
 import Foundation
-#if canImport(os)
-import os
-#else
 import Synchronization
-#endif
 
 final class PendingRequests: Sendable {
-    #if canImport(os)
-    private let waiting = OSAllocatedUnfairLock<[UUID: CheckedContinuation<Matter, Error>]>(initialState: [:])
-    #else
     private let waiting = Mutex<[UUID: CheckedContinuation<Matter, Error>]>([:])
-    #endif
 
     func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
         waiting.withLock { $0[id] = continuation }
