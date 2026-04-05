@@ -1,38 +1,31 @@
 import Foundation
+import Synchronization
 
-final class PendingRequests: @unchecked Sendable {
-    private var waiting: [UUID: CheckedContinuation<Matter, Error>] = [:]
-    private let lock = NSLock()
+final class PendingRequests: Sendable {
+    private let waiting: Mutex<[UUID: CheckedContinuation<Matter, Error>]> = Mutex([:])
 
     func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
-        lock.lock()
-        waiting[id] = continuation
-        lock.unlock()
+        waiting.withLock { $0[id] = continuation }
     }
 
     @discardableResult
     func fulfill(_ matter: Matter) -> Bool {
-        lock.lock()
-        let continuation = waiting.removeValue(forKey: matter.matterID)
-        lock.unlock()
+        let continuation = waiting.withLock { $0.removeValue(forKey: matter.matterID) }
         continuation?.resume(returning: matter)
         return continuation != nil
     }
 
     func fail(id: UUID, error: Error) {
-        lock.lock()
-        let continuation = waiting.removeValue(forKey: id)
-        lock.unlock()
+        let continuation = waiting.withLock { $0.removeValue(forKey: id) }
         continuation?.resume(throwing: error)
     }
 
     func failAll(error: Error) {
-        lock.lock()
-        let all = waiting
-        waiting.removeAll()
-        lock.unlock()
-        for continuation in all.values {
-            continuation.resume(throwing: error)
+        let all = waiting.withLock { dict -> [CheckedContinuation<Matter, Error>] in
+            let values = Array(dict.values)
+            dict.removeAll()
+            return values
         }
+        all.forEach { $0.resume(throwing: error) }
     }
 }

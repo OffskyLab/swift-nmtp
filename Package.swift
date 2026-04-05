@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "swift-nmtp",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "NMTP", targets: ["NMTP"]),
     ],
