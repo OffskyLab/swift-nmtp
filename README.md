@@ -1,5 +1,8 @@
 # swift-nmtp
 
+> [!WARNING]
+> This package is in early development. Many features are not yet implemented and the API is subject to breaking changes. Do not use in production.
+
 **Nebula Matter Transfer Protocol** — a lightweight binary transport protocol for Swift, built on [SwiftNIO](https://github.com/apple/swift-nio).
 
 NMTP is the wire-protocol layer of the Nebula distributed RPC framework. It handles TCP framing, binary encoding, and request/reply matching. It has no knowledge of service discovery, load balancing, or node roles — those are framework concerns.
