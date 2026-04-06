@@ -52,13 +52,6 @@ final class NMTIntegrationTests: XCTestCase {
 
 // MARK: - Helpers
 
-/// Returns the incoming matter as a .reply with the same matterID and body.
-private struct EchoHandler: NMTHandler {
-    func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        Matter(type: .reply, matterID: matter.matterID, body: matter.body)
-    }
-}
-
 /// Sends one unsolicited matter to the channel and returns nil (no direct reply).
 private struct PushHandler: NMTHandler {
     let pushBody: Data

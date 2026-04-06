@@ -6,13 +6,9 @@ import Synchronization
 
 final class TLSContextTests: XCTestCase {
 
-    // MARK: - Helpers
+    private static let asyncPipelineSettleDelay: UInt64 = 100_000_000  // 100 ms
 
-    private struct EchoHandler: NMTHandler {
-        func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-            Matter(type: .reply, matterID: matter.matterID, body: matter.body)
-        }
-    }
+    // MARK: - Helpers
 
     /// A TLSContext that installs a no-op handler and records how many times it was called.
     private final class MockTLSContext: TLSContext, Sendable {
@@ -78,7 +74,7 @@ final class TLSContextTests: XCTestCase {
         rawChannel.close(promise: nil)
 
         // Allow the async initializer to complete.
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: Self.asyncPipelineSettleDelay)
 
         XCTAssertEqual(mockTLS.serverCallCount, 1)
         try await elg.shutdownGracefully()
@@ -94,11 +90,15 @@ final class TLSContextTests: XCTestCase {
         defer { server.closeNow() }
 
         let mockTLS = MockTLSContext()
-        // Connect may fail because the PassThroughHandler corrupts the NMT framing.
-        // That's fine — we only check that makeClientHandler was called.
-        _ = try? await NMTClient.connect(to: server.address, tls: mockTLS)
+        // The connect may fail because the PassThroughHandler corrupts NMT framing —
+        // that is expected and acceptable here; we only need the initializer to run.
+        do {
+            _ = try await NMTClient.connect(to: server.address, tls: mockTLS)
+        } catch {
+            // Expected: NMT framing error after PassThroughHandler corrupts the pipeline.
+        }
 
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: Self.asyncPipelineSettleDelay)
         XCTAssertEqual(mockTLS.clientCallCount, 1)
     }
 }
