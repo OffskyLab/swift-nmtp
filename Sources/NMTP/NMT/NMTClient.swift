@@ -1,4 +1,3 @@
-import Foundation
 import NIO
 
 public final class NMTClient: Sendable {
@@ -8,19 +7,22 @@ public final class NMTClient: Sendable {
     private let channel: Channel
     private let pendingRequests: PendingRequests
     private let pushContinuation: AsyncStream<Matter>.Continuation
+    private let ownedEventLoopGroup: MultiThreadedEventLoopGroup?
 
     internal init(
         targetAddress: SocketAddress,
         channel: Channel,
         pendingRequests: PendingRequests,
         pushes: AsyncStream<Matter>,
-        pushContinuation: AsyncStream<Matter>.Continuation
+        pushContinuation: AsyncStream<Matter>.Continuation,
+        ownedEventLoopGroup: MultiThreadedEventLoopGroup?
     ) {
         self.targetAddress = targetAddress
         self.channel = channel
         self.pendingRequests = pendingRequests
         self.pushes = pushes
         self.pushContinuation = pushContinuation
+        self.ownedEventLoopGroup = ownedEventLoopGroup
     }
 }
 
@@ -31,43 +33,53 @@ extension NMTClient {
         tls: (any TLSContext)? = nil,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTClient {
-        let elg = eventLoopGroup ?? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let owned = eventLoopGroup == nil
+            ? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount) : nil
+        let elg = eventLoopGroup ?? owned!
         let pendingRequests = PendingRequests()
         var cont: AsyncStream<Matter>.Continuation!
         let pushes = AsyncStream<Matter> { cont = $0 }
         let inboundHandler = NMTClientInboundHandler(pendingRequests: pendingRequests, pushContinuation: cont)
-        let channel = try await ClientBootstrap(group: elg)
-            .channelOption(.socketOption(.so_reuseaddr), value: 1)
-            .channelInitializer { channel in
-                if let tls {
-                    let promise = channel.eventLoop.makePromise(of: Void.self)
-                    promise.completeWithTask {
-                        let tlsHandler = try await tls.makeClientHandler(serverHostname: address.ipAddress)
-                        try await channel.pipeline.addHandlers([
-                            tlsHandler,
+        do {
+            let channel = try await ClientBootstrap(group: elg)
+                .channelOption(.socketOption(.so_reuseaddr), value: 1)
+                .channelInitializer { channel in
+                    if let tls {
+                        let promise = channel.eventLoop.makePromise(of: Void.self)
+                        promise.completeWithTask {
+                            // SNI requires a hostname, not a raw IP — pass nil when only an IP is available.
+                            let tlsHandler = try await tls.makeClientHandler(serverHostname: nil)
+                            // Bridge EventLoopFuture<Void> into the async context.
+                            try await channel.pipeline.addHandlers([
+                                tlsHandler,
+                                ByteToMessageHandler(MatterDecoder()),
+                                MessageToByteHandler(MatterEncoder()),
+                                inboundHandler,
+                            ]).get()
+                        }
+                        return promise.futureResult
+                    } else {
+                        return channel.pipeline.addHandlers([
                             ByteToMessageHandler(MatterDecoder()),
                             MessageToByteHandler(MatterEncoder()),
                             inboundHandler,
-                        ]).get()
+                        ])
                     }
-                    return promise.futureResult
-                } else {
-                    return channel.pipeline.addHandlers([
-                        ByteToMessageHandler(MatterDecoder()),
-                        MessageToByteHandler(MatterEncoder()),
-                        inboundHandler,
-                    ])
                 }
-            }
-            .connect(to: address)
-            .get()
-        return NMTClient(
-            targetAddress: address,
-            channel: channel,
-            pendingRequests: pendingRequests,
-            pushes: pushes,
-            pushContinuation: cont
-        )
+                .connect(to: address)
+                .get()
+            return NMTClient(
+                targetAddress: address,
+                channel: channel,
+                pendingRequests: pendingRequests,
+                pushes: pushes,
+                pushContinuation: cont,
+                ownedEventLoopGroup: owned
+            )
+        } catch {
+            try? await owned?.shutdownGracefully()
+            throw error
+        }
     }
 }
 
@@ -86,6 +98,7 @@ extension NMTClient {
 
     public func close() async throws {
         try await channel.close().get()
+        try await ownedEventLoopGroup?.shutdownGracefully()
     }
 }
 

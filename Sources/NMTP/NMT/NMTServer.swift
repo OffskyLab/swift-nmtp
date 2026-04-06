@@ -1,4 +1,3 @@
-import Foundation
 import Logging
 import NIO
 
@@ -32,6 +31,7 @@ extension NMTServer {
                     let promise = channel.eventLoop.makePromise(of: Void.self)
                     promise.completeWithTask {
                         let tlsHandler = try await tls.makeServerHandler()
+                        // Bridge EventLoopFuture<Void> into the async context.
                         try await channel.pipeline.addHandlers([
                             tlsHandler,
                             ByteToMessageHandler(MatterDecoder()),
