@@ -19,6 +19,7 @@ extension NMTServer {
     public static func bind(
         on address: SocketAddress,
         handler: any NMTHandler,
+        tls: (any TLSContext)? = nil,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTServer {
         let owned = eventLoopGroup == nil ? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount) : nil
@@ -27,11 +28,25 @@ extension NMTServer {
             .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
-                channel.pipeline.addHandlers([
-                    ByteToMessageHandler(MatterDecoder()),
-                    MessageToByteHandler(MatterEncoder()),
-                    NMTServerInboundHandler(handler: handler),
-                ])
+                if let tls {
+                    let promise = channel.eventLoop.makePromise(of: Void.self)
+                    promise.completeWithTask {
+                        let tlsHandler = try await tls.makeServerHandler()
+                        try await channel.pipeline.addHandlers([
+                            tlsHandler,
+                            ByteToMessageHandler(MatterDecoder()),
+                            MessageToByteHandler(MatterEncoder()),
+                            NMTServerInboundHandler(handler: handler),
+                        ]).get()
+                    }
+                    return promise.futureResult
+                } else {
+                    return channel.pipeline.addHandlers([
+                        ByteToMessageHandler(MatterDecoder()),
+                        MessageToByteHandler(MatterEncoder()),
+                        NMTServerInboundHandler(handler: handler),
+                    ])
+                }
             }
             .bind(to: address)
             .get()

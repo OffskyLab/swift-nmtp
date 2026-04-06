@@ -28,6 +28,7 @@ public final class NMTClient: Sendable {
 extension NMTClient {
     public static func connect(
         to address: SocketAddress,
+        tls: (any TLSContext)? = nil,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTClient {
         let elg = eventLoopGroup ?? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
@@ -38,11 +39,25 @@ extension NMTClient {
         let channel = try await ClientBootstrap(group: elg)
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
-                channel.pipeline.addHandlers([
-                    ByteToMessageHandler(MatterDecoder()),
-                    MessageToByteHandler(MatterEncoder()),
-                    inboundHandler,
-                ])
+                if let tls {
+                    let promise = channel.eventLoop.makePromise(of: Void.self)
+                    promise.completeWithTask {
+                        let tlsHandler = try await tls.makeClientHandler(serverHostname: address.ipAddress)
+                        try await channel.pipeline.addHandlers([
+                            tlsHandler,
+                            ByteToMessageHandler(MatterDecoder()),
+                            MessageToByteHandler(MatterEncoder()),
+                            inboundHandler,
+                        ]).get()
+                    }
+                    return promise.futureResult
+                } else {
+                    return channel.pipeline.addHandlers([
+                        ByteToMessageHandler(MatterDecoder()),
+                        MessageToByteHandler(MatterEncoder()),
+                        inboundHandler,
+                    ])
+                }
             }
             .connect(to: address)
             .get()
