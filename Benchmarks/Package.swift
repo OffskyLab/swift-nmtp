@@ -9,6 +9,7 @@ let package = Package(
         .package(url: "https://github.com/ordo-one/package-benchmark", from: "1.22.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.21.0"),
+        .package(url: "https://github.com/hirotakan/MessagePacker.git", from: "0.4.0"),
     ],
     targets: [
         .executableTarget(
@@ -18,6 +19,7 @@ let package = Package(
                 .product(name: "Benchmark", package: "package-benchmark"),
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
+                .product(name: "MessagePacker", package: "MessagePacker"),
             ],
             path: "Sources/Benchmarks",
             plugins: [

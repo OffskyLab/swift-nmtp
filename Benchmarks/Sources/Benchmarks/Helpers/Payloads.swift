@@ -11,17 +11,26 @@ enum Payloads {
 
     static let small: Data = {
         let payload = Echo(data: Data(repeating: 0xAB, count: 52))   // 52 B data → ~64 B encoded
-        return (try? MessagePackEncoder().encode(payload)) ?? Data()
+        guard let encoded = try? MessagePackEncoder().encode(payload) else {
+            fatalError("Payloads.small: MessagePack encoding failed")
+        }
+        return encoded
     }()
 
     static let medium: Data = {
         let payload = Echo(data: Data(repeating: 0xAB, count: 1012)) // 1012 B data → ~1 KB encoded
-        return (try? MessagePackEncoder().encode(payload)) ?? Data()
+        guard let encoded = try? MessagePackEncoder().encode(payload) else {
+            fatalError("Payloads.medium: MessagePack encoding failed")
+        }
+        return encoded
     }()
 
     static let large: Data = {
         let payload = Echo(data: Data(repeating: 0xAB, count: 65524)) // 65524 B data → ~64 KB encoded
-        return (try? MessagePackEncoder().encode(payload)) ?? Data()
+        guard let encoded = try? MessagePackEncoder().encode(payload) else {
+            fatalError("Payloads.large: MessagePack encoding failed")
+        }
+        return encoded
     }()
 
     /// Wire-size comparison for README table.
