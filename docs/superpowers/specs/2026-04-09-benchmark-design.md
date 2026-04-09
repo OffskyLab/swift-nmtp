@@ -115,7 +115,8 @@ HTTP/Latency/Large
 ### Concurrent (10)
 
 **MultiClient** — N independent clients, each with its own channel, sending concurrently.  
-Tests server throughput under multiple simultaneous connections.
+Tests server throughput under multiple simultaneous connections.  
+Fixed payload: **Medium (1 KB)** — representative of real-world use without being header- or body-dominated.
 
 ```
 NMTP/Concurrent/MultiClient/4
@@ -127,7 +128,8 @@ HTTP/Concurrent/MultiClient/64
 ```
 
 **Pipeline** — Single client, M concurrent requests via `async let`.  
-Tests client-side multiplexing.
+Tests client-side multiplexing.  
+Fixed payload: **Medium (1 KB)**.
 
 ```
 NMTP/Concurrent/Pipeline/10
