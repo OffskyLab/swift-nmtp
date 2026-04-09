@@ -21,7 +21,7 @@ let package = Package(
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "MessagePacker", package: "MessagePacker"),
             ],
-            path: "Sources/Benchmarks",
+            path: "Benchmarks/Benchmarks",
             plugins: [
                 .plugin(name: "BenchmarkPlugin", package: "package-benchmark"),
             ]

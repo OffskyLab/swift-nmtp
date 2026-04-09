@@ -9,9 +9,7 @@ import Foundation
 extension UUID {
 
     var bytes: [UInt8] {
-        var uuid = self.uuid
-        let ptr = UnsafeBufferPointer(start: &uuid.0, count: MemoryLayout.size(ofValue: uuid))
-        return .init(ptr)
+        return withUnsafeBytes(of: self.uuid) { Array($0) }
     }
 
     var data: Data {
