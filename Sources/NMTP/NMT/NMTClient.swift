@@ -1,4 +1,7 @@
+import Foundation
 import NIO
+import NIOHTTP1
+import NIOWebSocket
 
 public final class NMTClient: Sendable {
     public let targetAddress: SocketAddress
@@ -31,7 +34,7 @@ extension NMTClient {
     public static func connect(
         to address: SocketAddress,
         tls: (any TLSContext)? = nil,
-        transport: NMTTransport = .tcp,   // ← new param, ignored until Task 5
+        transport: NMTTransport = .tcp,
         heartbeatInterval: Duration = .seconds(30),
         heartbeatMissedLimit: Int = 2,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
@@ -43,40 +46,27 @@ extension NMTClient {
         var cont: AsyncStream<Matter>.Continuation!
         let pushes = AsyncStream<Matter> { cont = $0 }
         let inboundHandler = NMTClientInboundHandler(pendingRequests: pendingRequests, pushContinuation: cont)
-        // Capture only value types to avoid Sendable issues with [any ChannelHandler].
-        let idleTime = heartbeatInterval.timeAmount
         do {
-            let channel = try await ClientBootstrap(group: elg)
-                .channelOption(.socketOption(.so_reuseaddr), value: 1)
-                .channelInitializer { channel in
-                    if let tls {
-                        let promise = channel.eventLoop.makePromise(of: Void.self)
-                        promise.completeWithTask {
-                            // SNI requires a hostname, not a raw IP — pass nil when only an IP is available.
-                            let tlsHandler = try await tls.makeClientHandler(serverHostname: nil)
-                            // Bridge EventLoopFuture<Void> into the async context.
-                            try await channel.pipeline.addHandlers([
-                                tlsHandler,
-                                ByteToMessageHandler(MatterDecoder()),
-                                MessageToByteHandler(MatterEncoder()),
-                                IdleStateHandler(readTimeout: idleTime),
-                                HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                                inboundHandler,
-                            ]).get()
-                        }
-                        return promise.futureResult
-                    } else {
-                        return channel.pipeline.addHandlers([
-                            ByteToMessageHandler(MatterDecoder()),
-                            MessageToByteHandler(MatterEncoder()),
-                            IdleStateHandler(readTimeout: idleTime),
-                            HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                            inboundHandler,
-                        ])
-                    }
-                }
-                .connect(to: address)
-                .get()
+            let channel: Channel
+            switch transport {
+            case .tcp:
+                channel = try await connectTCP(
+                    to: address,
+                    elg: elg,
+                    tls: tls,
+                    heartbeatInterval: heartbeatInterval,
+                    heartbeatMissedLimit: heartbeatMissedLimit,
+                    inboundHandler: inboundHandler
+                )
+            case .webSocket(let path):
+                channel = try await connectWebSocket(
+                    to: address,
+                    elg: elg,
+                    tls: tls,
+                    path: path,
+                    inboundHandler: inboundHandler
+                )
+            }
             return NMTClient(
                 targetAddress: address,
                 channel: channel,
@@ -89,6 +79,122 @@ extension NMTClient {
             try? await owned?.shutdownGracefully()
             throw error
         }
+    }
+
+    private static func connectTCP(
+        to address: SocketAddress,
+        elg: MultiThreadedEventLoopGroup,
+        tls: (any TLSContext)?,
+        heartbeatInterval: Duration,
+        heartbeatMissedLimit: Int,
+        inboundHandler: NMTClientInboundHandler
+    ) async throws -> Channel {
+        // Capture only value types to avoid Sendable issues with [any ChannelHandler].
+        let idleTime = heartbeatInterval.timeAmount
+        return try await ClientBootstrap(group: elg)
+            .channelOption(.socketOption(.so_reuseaddr), value: 1)
+            .channelInitializer { channel in
+                if let tls {
+                    let promise = channel.eventLoop.makePromise(of: Void.self)
+                    promise.completeWithTask {
+                        // SNI requires a hostname, not a raw IP — pass nil when only an IP is available.
+                        let tlsHandler = try await tls.makeClientHandler(serverHostname: nil)
+                        // Bridge EventLoopFuture<Void> into the async context.
+                        try await channel.pipeline.addHandlers([
+                            tlsHandler,
+                            ByteToMessageHandler(MatterDecoder()),
+                            MessageToByteHandler(MatterEncoder()),
+                            IdleStateHandler(readTimeout: idleTime),
+                            HeartbeatHandler(missedLimit: heartbeatMissedLimit),
+                            inboundHandler,
+                        ]).get()
+                    }
+                    return promise.futureResult
+                } else {
+                    return channel.pipeline.addHandlers([
+                        ByteToMessageHandler(MatterDecoder()),
+                        MessageToByteHandler(MatterEncoder()),
+                        IdleStateHandler(readTimeout: idleTime),
+                        HeartbeatHandler(missedLimit: heartbeatMissedLimit),
+                        inboundHandler,
+                    ])
+                }
+            }
+            .connect(to: address)
+            .get()
+    }
+
+    private static func connectWebSocket(
+        to address: SocketAddress,
+        elg: MultiThreadedEventLoopGroup,
+        tls: (any TLSContext)?,
+        path: String,
+        inboundHandler: NMTClientInboundHandler
+    ) async throws -> Channel {
+        // Use AsyncStream to bridge the async upgrade completion into structured concurrency.
+        var upgradeSignalContinuation: AsyncStream<Void>.Continuation!
+        let upgradeSignal = AsyncStream<Void> { upgradeSignalContinuation = $0 }
+
+        // Random 16-byte nonce for Sec-WebSocket-Key (RFC 6455 §4.1).
+        let requestKey = Data((0..<16).map { _ in UInt8.random(in: 0...255) }).base64EncodedString()
+
+        let channel = try await ClientBootstrap(group: elg)
+            .channelOption(.socketOption(.so_reuseaddr), value: 1)
+            .channelInitializer { channel in
+                // NIOWebSocketClientUpgrader adds WebSocketFrameDecoder + WebSocketFrameEncoder
+                // automatically before calling upgradePipelineHandler.
+                let upgrader = NIOWebSocketClientUpgrader(
+                    requestKey: requestKey,
+                    upgradePipelineHandler: { (ch: Channel, _: HTTPResponseHead) -> EventLoopFuture<Void> in
+                        ch.pipeline.addHandlers([
+                            NMTWebSocketFrameHandler(isClient: true),
+                            ByteToMessageHandler(MatterDecoder()),
+                            MessageToByteHandler(MatterEncoder()),
+                            // Note: IdleStateHandler/HeartbeatHandler are not included in the WebSocket
+                            // pipeline — same decision as the server side. Heartbeat support for
+                            // WebSocket connections is out of scope for this implementation.
+                            inboundHandler,
+                        ]).map {
+                            upgradeSignalContinuation.yield(())
+                            upgradeSignalContinuation.finish()
+                        }
+                    }
+                )
+                let config: NIOHTTPClientUpgradeConfiguration = (
+                    upgraders: [upgrader],
+                    completionHandler: { _ in }
+                )
+                if let tls {
+                    let promise = channel.eventLoop.makePromise(of: Void.self)
+                    promise.completeWithTask {
+                        let tlsHandler = try await tls.makeClientHandler(serverHostname: nil)
+                        try await channel.pipeline.addHandler(tlsHandler).get()
+                        try await channel.pipeline.addHTTPClientHandlers(withClientUpgrade: config).get()
+                    }
+                    return promise.futureResult
+                } else {
+                    return channel.pipeline.addHTTPClientHandlers(withClientUpgrade: config)
+                }
+            }
+            .connect(to: address)
+            .get()
+
+        // Send the HTTP GET that triggers the WebSocket upgrade handshake.
+        let host: String
+        switch address {
+        case .v4(let addr): host = addr.host
+        case .v6(let addr): host = addr.host
+        default: host = "localhost"
+        }
+        var headers = HTTPHeaders()
+        headers.add(name: "Host", value: host)
+        let requestHead = HTTPRequestHead(version: .http1_1, method: .GET, uri: path, headers: headers)
+        try await channel.writeAndFlush(HTTPClientRequestPart.head(requestHead)).get()
+
+        // Wait for the server's 101 Switching Protocols and pipeline swap to complete.
+        for await _ in upgradeSignal { break }
+
+        return channel
     }
 }
 
