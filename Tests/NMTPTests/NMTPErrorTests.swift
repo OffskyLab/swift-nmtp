@@ -23,13 +23,13 @@ struct NMTPErrorTests {
 
     @Test("New reliability error cases are throwable and equatable")
     func reliabilityErrorCases() throws {
-        #expect(throws: NMTPError.self) {
+        #expect(throws: NMTPError.timeout) {
             throw NMTPError.timeout
         }
-        #expect(throws: NMTPError.self) {
+        #expect(throws: NMTPError.connectionDead) {
             throw NMTPError.connectionDead
         }
-        #expect(throws: NMTPError.self) {
+        #expect(throws: NMTPError.shuttingDown) {
             throw NMTPError.shuttingDown
         }
         // Equatability
