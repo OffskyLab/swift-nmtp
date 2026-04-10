@@ -8,7 +8,7 @@ import NIOWebSocket
 ///
 /// Control frames (ping, pong, close) are silently dropped on the inbound path
 /// because the NMT protocol layer has no use for them.
-final class NMTWebSocketFrameHandler: ChannelDuplexHandler, @unchecked Sendable {
+final class NMTWebSocketFrameHandler: ChannelDuplexHandler, Sendable {
     typealias InboundIn = WebSocketFrame
     typealias InboundOut = ByteBuffer
     typealias OutboundIn = ByteBuffer

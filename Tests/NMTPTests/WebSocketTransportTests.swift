@@ -87,6 +87,13 @@ final class WebSocketFrameHandlerTests: XCTestCase {
         let frame = try XCTUnwrap(channel.readOutbound(as: WebSocketFrame.self))
         XCTAssertEqual(frame.opcode, .binary)
         XCTAssertNotNil(frame.maskKey, "Client frames MUST be masked (RFC 6455 §5.3)")
+        // Verify the payload survives the mask/unmask round-trip.
+        // In EmbeddedChannel the WebSocket encoder has not run yet, so frame.data
+        // holds the original plain bytes and frame.maskKey records the key that
+        // the encoder *will* use.  Applying unmaskedData here would XOR plain
+        // data a second time and corrupt it, so we read frame.data directly.
+        var payload = frame.data
+        XCTAssertEqual(payload.readString(length: 5), "hello")
     }
 
     // Masked inbound frame (client → server): handler must unmask before forwarding.
