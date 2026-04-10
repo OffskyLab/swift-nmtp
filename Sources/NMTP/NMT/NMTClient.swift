@@ -31,6 +31,7 @@ extension NMTClient {
     public static func connect(
         to address: SocketAddress,
         tls: (any TLSContext)? = nil,
+        transport: NMTTransport = .tcp,   // ← new param, ignored until Task 5
         heartbeatInterval: Duration = .seconds(30),
         heartbeatMissedLimit: Int = 2,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil

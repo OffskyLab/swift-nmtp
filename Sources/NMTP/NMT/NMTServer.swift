@@ -73,6 +73,7 @@ extension NMTServer {
         on address: SocketAddress,
         handler: any NMTHandler,
         tls: (any TLSContext)? = nil,
+        transport: NMTTransport = .tcp,   // ← new param, ignored until Task 4
         heartbeatInterval: Duration = .seconds(30),
         heartbeatMissedLimit: Int = 2,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil

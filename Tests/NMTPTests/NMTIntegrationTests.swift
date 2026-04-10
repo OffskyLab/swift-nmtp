@@ -50,19 +50,6 @@ final class NMTIntegrationTests: XCTestCase {
     }
 }
 
-// MARK: - Helpers
-
-/// Sends one unsolicited matter to the channel and returns nil (no direct reply).
-private struct PushHandler: NMTHandler {
-    let pushBody: Data
-
-    func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        let push = Matter(type: .reply, body: pushBody)
-        channel.writeAndFlush(push, promise: nil)
-        return nil
-    }
-}
-
 // MARK: - Timeout tests
 
 final class RequestTimeoutTests: XCTestCase {

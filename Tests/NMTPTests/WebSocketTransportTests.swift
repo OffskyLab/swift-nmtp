@@ -116,3 +116,107 @@ final class WebSocketFrameHandlerTests: XCTestCase {
         XCTAssertEqual(received.readBytes(length: original.count), original)
     }
 }
+
+// MARK: - WebSocket integration tests
+
+final class WebSocketIntegrationTests: XCTestCase {
+
+    /// Successful connect + close implies the HTTP→WebSocket upgrade was accepted.
+    func testWebSocket_serverAcceptsUpgrade() async throws {
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler(),
+            transport: .webSocket()
+        )
+        defer { server.closeNow() }
+
+        let client = try await NMTClient.connect(to: server.address, transport: .webSocket())
+        try await client.close()
+    }
+
+    /// Matter request-reply must work end-to-end over WebSocket.
+    func testWebSocket_requestReply() async throws {
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler(),
+            transport: .webSocket()
+        )
+        defer { server.closeNow() }
+
+        let client = try await NMTClient.connect(to: server.address, transport: .webSocket())
+        defer { Task { try await client.close() } }
+
+        let sentBody = Data("hello-ws".utf8)
+        let request = Matter(type: .call, body: sentBody)
+        let reply = try await client.request(matter: request)
+
+        XCTAssertEqual(reply.matterID, request.matterID)
+        XCTAssertEqual(reply.type, .reply)
+        XCTAssertEqual(reply.body, sentBody)
+    }
+
+    /// Server-initiated push must arrive at the client over WebSocket.
+    func testWebSocket_serverPush() async throws {
+        let pushBody = Data("push-ws".utf8)
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: PushHandler(pushBody: pushBody),
+            transport: .webSocket()
+        )
+        defer { server.closeNow() }
+
+        let client = try await NMTClient.connect(to: server.address, transport: .webSocket())
+        defer { Task { try await client.close() } }
+
+        client.fire(matter: Matter(type: .call, body: Data()))
+
+        var received: Matter?
+        for await matter in client.pushes {
+            received = matter
+            break
+        }
+        XCTAssertNotNil(received)
+        XCTAssertEqual(received?.body, pushBody)
+    }
+
+    /// Default transport must still be TCP — regression guard.
+    func testWebSocket_tcpDefault() async throws {
+        // No transport: argument — defaults to .tcp
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler()
+        )
+        defer { server.closeNow() }
+
+        let client = try await NMTClient.connect(to: server.address)
+        defer { Task { try await client.close() } }
+
+        let sentBody = Data("tcp-default".utf8)
+        let reply = try await client.request(matter: Matter(type: .call, body: sentBody))
+        XCTAssertEqual(reply.body, sentBody)
+    }
+
+    /// TLS + WebSocket must complete an echo round-trip.
+    func testWebSocket_withTLS() async throws {
+        let tls = MockTLSContext()
+
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler(),
+            tls: tls,
+            transport: .webSocket()
+        )
+        defer { server.closeNow() }
+
+        let client = try await NMTClient.connect(
+            to: server.address,
+            tls: tls,
+            transport: .webSocket()
+        )
+        defer { Task { try await client.close() } }
+
+        let sentBody = Data("tls-ws".utf8)
+        let reply = try await client.request(matter: Matter(type: .call, body: sentBody))
+        XCTAssertEqual(reply.body, sentBody)
+    }
+}
