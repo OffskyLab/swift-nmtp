@@ -40,9 +40,18 @@ final class NMTIntegrationTests: XCTestCase {
         client.fire(matter: trigger)
 
         var received: Matter?
-        for await matter in client.pushes {
-            received = matter
-            break
+        received = try await withThrowingTaskGroup(of: Matter?.self) { group in
+            group.addTask {
+                for await matter in client.pushes { return matter }
+                return nil
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
 
         XCTAssertNotNil(received)
