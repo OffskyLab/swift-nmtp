@@ -153,7 +153,7 @@ Tests are written before implementation, one mechanism at a time.
 
 ### Heartbeat tests
 4. Connect client to server; manually close the server's channel without sending any Matter
-5. Assert client receives `NMTPError.connectionDead` within `interval × (missedLimit + 1)`
+5. Assert client receives `NMTPError.connectionDead` within `interval × missedLimit`
 6. Assert normal request/reply flow is unaffected by heartbeats running in the background
 
 ### Graceful shutdown tests

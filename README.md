@@ -151,6 +151,57 @@ Other language client SDKs implement NMTP independently and interoperate at the 
 
 ---
 
+## Performance
+
+Benchmarks compare NMTP against a plain HTTP/1.1 echo server (NIO + AsyncHTTPClient).
+Both sides use the same MessagePack-encoded payload over a loopback TCP connection.
+Run with [ordo-one/package-benchmark](https://github.com/ordo-one/package-benchmark) in release mode on macOS (Apple M-series, single machine, loopback).
+
+> Results reflect protocol overhead only. Real-world numbers on Linux servers will vary.
+
+### Throughput — sequential request/reply round-trips
+
+| Payload | NMTP p50 | HTTP p50 | Speedup |
+|---------|--------:|--------:|--------:|
+| Small  (64 B)  | 20,000 /s | 5,467 /s | **3.7×** |
+| Medium (1 KB)  | 20,000 /s | 5,155 /s | **3.9×** |
+| Large  (64 KB) | 12,000 /s | 2,733 /s | **4.4×** |
+
+### Latency — wall-clock time per round-trip
+
+| Payload | NMTP p50 | NMTP p99 | HTTP p50 | HTTP p99 |
+|---------|--------:|--------:|--------:|--------:|
+| Small  (64 B)  |  41 μs |  42 μs | 149 μs | 161 μs |
+| Medium (1 KB)  |  40 μs |  64 μs | 149 μs | 156 μs |
+| Large  (64 KB) |  94 μs | 379 μs | 379 μs | 379 μs |
+
+### Concurrent connections — wall-clock per batch (N simultaneous requests, Small payload)
+
+| Connections | NMTP p50 | HTTP p50 |
+|:-----------:|--------:|--------:|
+| 2 |  87 μs | 246 μs |
+| 4 | 121 μs | 322 μs |
+| 8 | 152 μs | 427 μs |
+
+### Wire overhead
+
+27-byte fixed header (vs ~130 bytes for a typical HTTP/1.1 POST):
+
+| Payload | NMTP wire | HTTP wire |
+|---------|----------:|----------:|
+| Small  (64 B)  |    87 B |    190 B |
+| Medium (1 KB)  | 1,048 B |  1,151 B |
+| Large  (64 KB) | 65,560 B | 65,663 B |
+
+To reproduce:
+
+```bash
+cd Benchmarks
+swift package --disable-sandbox benchmark
+```
+
+---
+
 ## Requirements
 
 - Swift 6.0+

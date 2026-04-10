@@ -83,7 +83,7 @@ struct NMTPEchoServer: Sendable {
 
 /// Pure NIO echo handler: receives a Matter, immediately writes back a reply
 /// on the same event loop thread — no Swift Task, no cooperative pool usage.
-private final class DirectEchoHandler: ChannelDuplexHandler, @unchecked Sendable {
+final class DirectEchoHandler: ChannelDuplexHandler, @unchecked Sendable {
     typealias InboundIn  = Matter
     typealias InboundOut = Never
     typealias OutboundIn = Never
@@ -105,7 +105,7 @@ private final class DirectEchoHandler: ChannelDuplexHandler, @unchecked Sendable
 /// Receives reply Matters and fulfills the matching `EventLoopPromise`.
 /// Thread-safe: `register` is called from the benchmark thread; `channelRead`
 /// is called from a NIO event loop thread.
-private final class SyncClientHandler: ChannelInboundHandler, @unchecked Sendable {
+final class SyncClientHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Matter
 
     private let lock = NSLock()

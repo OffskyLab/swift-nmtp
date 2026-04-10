@@ -1,0 +1,25 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    container:
+      image: swift:6.0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build benchmarks
+        working-directory: Benchmarks
+        run: swift build -c release
+
+      - name: Run benchmarks
+        working-directory: Benchmarks
+        run: swift package --disable-sandbox benchmark --format markdown
