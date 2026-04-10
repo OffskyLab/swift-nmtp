@@ -1,5 +1,7 @@
 import Logging
 import NIO
+import NIOHTTP1
+import NIOWebSocket
 import Synchronization
 
 // MARK: - ServerState
@@ -73,7 +75,7 @@ extension NMTServer {
         on address: SocketAddress,
         handler: any NMTHandler,
         tls: (any TLSContext)? = nil,
-        transport: NMTTransport = .tcp,   // ← new param, ignored until Task 4
+        transport: NMTTransport = .tcp,
         heartbeatInterval: Duration = .seconds(30),
         heartbeatMissedLimit: Int = 2,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
@@ -85,29 +87,24 @@ extension NMTServer {
             .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
-                let serverHandler = NMTServerInboundHandler(handler: handler, serverState: serverState)
-                if let tls {
-                    let promise = channel.eventLoop.makePromise(of: Void.self)
-                    promise.completeWithTask {
-                        let tlsHandler = try await tls.makeServerHandler()
-                        try await channel.pipeline.addHandlers([
-                            tlsHandler,
-                            ByteToMessageHandler(MatterDecoder()),
-                            MessageToByteHandler(MatterEncoder()),
-                            IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
-                            HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                            serverHandler,
-                        ]).get()
-                    }
-                    return promise.futureResult
-                } else {
-                    return channel.pipeline.addHandlers([
-                        ByteToMessageHandler(MatterDecoder()),
-                        MessageToByteHandler(MatterEncoder()),
-                        IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
-                        HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                        serverHandler,
-                    ])
+                switch transport {
+                case .tcp:
+                    return Self.buildTCPServerPipeline(
+                        channel: channel,
+                        handler: handler,
+                        tls: tls,
+                        serverState: serverState,
+                        heartbeatInterval: heartbeatInterval,
+                        heartbeatMissedLimit: heartbeatMissedLimit
+                    )
+                case .webSocket(let path):
+                    return Self.buildWebSocketServerPipeline(
+                        channel: channel,
+                        handler: handler,
+                        tls: tls,
+                        serverState: serverState,
+                        path: path
+                    )
                 }
             }
             .bind(to: address)
@@ -119,6 +116,82 @@ extension NMTServer {
             ownedEventLoopGroup: owned,
             serverState: serverState
         )
+    }
+
+    private static func buildTCPServerPipeline(
+        channel: Channel,
+        handler: any NMTHandler,
+        tls: (any TLSContext)?,
+        serverState: ServerState,
+        heartbeatInterval: Duration,
+        heartbeatMissedLimit: Int
+    ) -> EventLoopFuture<Void> {
+        let serverHandler = NMTServerInboundHandler(handler: handler, serverState: serverState)
+        if let tls {
+            let promise = channel.eventLoop.makePromise(of: Void.self)
+            promise.completeWithTask {
+                let tlsHandler = try await tls.makeServerHandler()
+                try await channel.pipeline.addHandlers([
+                    tlsHandler,
+                    ByteToMessageHandler(MatterDecoder()),
+                    MessageToByteHandler(MatterEncoder()),
+                    IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
+                    HeartbeatHandler(missedLimit: heartbeatMissedLimit),
+                    serverHandler,
+                ]).get()
+            }
+            return promise.futureResult
+        } else {
+            return channel.pipeline.addHandlers([
+                ByteToMessageHandler(MatterDecoder()),
+                MessageToByteHandler(MatterEncoder()),
+                IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
+                HeartbeatHandler(missedLimit: heartbeatMissedLimit),
+                serverHandler,
+            ])
+        }
+    }
+
+    private static func buildWebSocketServerPipeline(
+        channel: Channel,
+        handler: any NMTHandler,
+        tls: (any TLSContext)?,
+        serverState: ServerState,
+        path: String
+    ) -> EventLoopFuture<Void> {
+        // NIOWebSocketServerUpgrader adds WebSocketFrameDecoder + WebSocketFrameEncoder
+        // automatically before calling upgradePipelineHandler.
+        let upgrader = NIOWebSocketServerUpgrader(
+            shouldUpgrade: { (ch: Channel, head: HTTPRequestHead) -> EventLoopFuture<HTTPHeaders?> in
+                guard head.uri == path else {
+                    return ch.eventLoop.makeSucceededFuture(nil)
+                }
+                return ch.eventLoop.makeSucceededFuture(HTTPHeaders())
+            },
+            upgradePipelineHandler: { (ch: Channel, _: HTTPRequestHead) -> EventLoopFuture<Void> in
+                ch.pipeline.addHandlers([
+                    NMTWebSocketFrameHandler(isClient: false),
+                    ByteToMessageHandler(MatterDecoder()),
+                    MessageToByteHandler(MatterEncoder()),
+                    NMTServerInboundHandler(handler: handler, serverState: serverState),
+                ])
+            }
+        )
+        if let tls {
+            let promise = channel.eventLoop.makePromise(of: Void.self)
+            promise.completeWithTask {
+                let tlsHandler = try await tls.makeServerHandler()
+                try await channel.pipeline.addHandler(tlsHandler).get()
+                try await channel.pipeline.configureHTTPServerPipeline(
+                    withServerUpgrade: (upgraders: [upgrader], completionHandler: { _ in })
+                ).get()
+            }
+            return promise.futureResult
+        } else {
+            return channel.pipeline.configureHTTPServerPipeline(
+                withServerUpgrade: (upgraders: [upgrader], completionHandler: { _ in })
+            )
+        }
     }
 }
 
