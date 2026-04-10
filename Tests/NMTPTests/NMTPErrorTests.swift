@@ -21,6 +21,23 @@ struct NMTPErrorTests {
         }
     }
 
+    @Test("New reliability error cases are throwable and equatable")
+    func reliabilityErrorCases() throws {
+        #expect(throws: NMTPError.self) {
+            throw NMTPError.timeout
+        }
+        #expect(throws: NMTPError.self) {
+            throw NMTPError.connectionDead
+        }
+        #expect(throws: NMTPError.self) {
+            throw NMTPError.shuttingDown
+        }
+        // Equatability
+        #expect(NMTPError.timeout == NMTPError.timeout)
+        #expect(NMTPError.connectionDead != NMTPError.timeout)
+        #expect(NMTPError.shuttingDown != NMTPError.connectionDead)
+    }
+
     @Test("UUID round-trip via bytes")
     func uuidRoundTrip() throws {
         let original = UUID()
