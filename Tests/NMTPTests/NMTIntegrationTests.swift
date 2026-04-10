@@ -191,6 +191,87 @@ final class HeartbeatTests: XCTestCase {
     }
 }
 
+// MARK: - Graceful shutdown tests
+
+final class GracefulShutdownTests: XCTestCase {
+
+    /// A handler that waits `delay` before replying, simulating slow work.
+    private struct SlowEchoHandler: NMTHandler {
+        let delay: Duration
+        func handle(matter: Matter, channel: Channel) async throws -> Matter? {
+            try await Task.sleep(for: delay)
+            return Matter(type: .reply, matterID: matter.matterID, body: matter.body)
+        }
+    }
+
+    func testSlowRequestCompletesBeforeShutdownCloses() async throws {
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: SlowEchoHandler(delay: .milliseconds(300))
+        )
+
+        let client = try await NMTClient.connect(to: server.address)
+
+        // Fire the slow request — it will take ~300 ms to reply.
+        async let replyTask = client.request(matter: Matter(type: .call, body: Data("slow".utf8)))
+
+        // Give request a moment to reach the server.
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Immediately start shutdown with a generous grace period.
+        async let shutdownTask: Void = server.shutdown(gracePeriod: .seconds(5))
+
+        // Both should complete: reply arrives, THEN server closes.
+        let reply = try await replyTask
+        try await shutdownTask
+
+        XCTAssertEqual(reply.body, Data("slow".utf8))
+
+        Task { try? await client.close() }
+    }
+
+    func testNewRequestDuringDrainFailsWithConnectionError() async throws {
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: SlowEchoHandler(delay: .milliseconds(500))
+        )
+
+        let clientA = try await NMTClient.connect(to: server.address)
+        let clientB = try await NMTClient.connect(to: server.address)
+
+        // clientA fires a slow request.
+        async let _ = clientA.request(matter: Matter(type: .call, body: Data()))
+
+        // Give the slow request a moment to reach the server handler.
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Start shutdown.
+        async let shutdownTask: Void = server.shutdown(gracePeriod: .seconds(5))
+
+        // Give shutdown a moment to set the flag.
+        try await Task.sleep(for: .milliseconds(50))
+
+        // clientB sends a new request during drain — server should reject it.
+        do {
+            _ = try await clientB.request(
+                matter: Matter(type: .call, body: Data()),
+                timeout: .milliseconds(200)
+            )
+            XCTFail("Expected a connection error during drain")
+        } catch let e as NMTPError {
+            XCTAssertTrue(
+                e == .connectionClosed || e == .timeout || e == .connectionDead,
+                "Unexpected error: \(e)"
+            )
+        }
+
+        try await shutdownTask
+
+        Task { try? await clientA.close() }
+        Task { try? await clientB.close() }
+    }
+}
+
 // MARK: - PendingRequests unit tests
 
 final class PendingRequestsTests: XCTestCase {
