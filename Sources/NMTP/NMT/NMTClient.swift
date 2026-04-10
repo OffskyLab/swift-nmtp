@@ -89,10 +89,26 @@ extension NMTClient {
         channel.writeAndFlush(matter, promise: nil)
     }
 
-    public func request(matter: Matter) async throws -> Matter {
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests.register(id: matter.matterID, continuation: continuation)
-            channel.writeAndFlush(matter, promise: nil)
+    public func request(matter: Matter, timeout: Duration = .seconds(30)) async throws -> Matter {
+        return try await withThrowingTaskGroup(of: Matter.self) { group in
+            group.addTask {
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { continuation in
+                        self.pendingRequests.register(id: matter.matterID, continuation: continuation)
+                        self.channel.writeAndFlush(matter, promise: nil)
+                    }
+                } onCancel: {
+                    // Remove the pending UUID so no memory leak occurs.
+                    self.pendingRequests.fail(id: matter.matterID, error: NMTPError.timeout)
+                }
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw NMTPError.timeout
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 

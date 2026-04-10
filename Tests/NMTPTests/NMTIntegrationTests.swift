@@ -63,6 +63,46 @@ private struct PushHandler: NMTHandler {
     }
 }
 
+// MARK: - Timeout tests
+
+final class RequestTimeoutTests: XCTestCase {
+
+    /// A server that accepts connections and decodes Matter, but never replies.
+    private func makeSilentServer(elg: MultiThreadedEventLoopGroup) async throws -> Channel {
+        try await ServerBootstrap(group: elg)
+            .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { channel in
+                channel.pipeline.addHandlers([
+                    ByteToMessageHandler(MatterDecoder()),
+                    MessageToByteHandler(MatterEncoder()),
+                    // No reply handler — connection stays silent.
+                ])
+            }
+            .bind(host: "127.0.0.1", port: 0)
+            .get()
+    }
+
+    func testRequestThrowsTimeoutWhenServerNeverReplies() async throws {
+        let elg = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+
+        let server = try await makeSilentServer(elg: elg)
+        let address = server.localAddress!
+        let client = try await NMTClient.connect(to: address, eventLoopGroup: elg)
+
+        let request = Matter(type: .call, body: Data("ping".utf8))
+        do {
+            _ = try await client.request(matter: request, timeout: .milliseconds(100))
+            XCTFail("Expected NMTPError.timeout")
+        } catch NMTPError.timeout {
+            // Expected
+        }
+
+        try? await client.close()
+        server.close(promise: nil)
+        try await elg.shutdownGracefully()
+    }
+}
+
 // MARK: - PendingRequests unit tests
 
 final class PendingRequestsTests: XCTestCase {
