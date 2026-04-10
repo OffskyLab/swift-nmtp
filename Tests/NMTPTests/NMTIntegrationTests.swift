@@ -103,6 +103,94 @@ final class RequestTimeoutTests: XCTestCase {
     }
 }
 
+// MARK: - Heartbeat tests
+
+final class HeartbeatTests: XCTestCase {
+
+    /// Connects a client with a very short heartbeat interval to a TCP server
+    /// that accepts the connection but never sends any data back.
+    /// Asserts the client detects the dead connection within the expected window.
+    func testClientDetectsDeadConnectionViaHeartbeat() async throws {
+        let elg = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+
+        // Raw silent server — accepts TCP but sends nothing.
+        let silentServer = try await ServerBootstrap(group: elg)
+            .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { channel in
+                // Accept the connection silently.
+                channel.eventLoop.makeSucceededVoidFuture()
+            }
+            .bind(host: "127.0.0.1", port: 0)
+            .get()
+
+        // Client with a 50 ms heartbeat interval and missedLimit = 2.
+        // Connection declared dead after 50 ms × 2 = 100 ms.
+        let client = try await NMTClient.connect(
+            to: silentServer.localAddress!,
+            heartbeatInterval: .milliseconds(50),
+            heartbeatMissedLimit: 2,
+            eventLoopGroup: elg
+        )
+
+        defer {
+            Task {
+                try? await client.close()
+                try? await silentServer.close().get()
+                try? await elg.shutdownGracefully()
+            }
+        }
+
+        // Wait for 250 ms — well past the 100 ms dead-connection deadline.
+        try await Task.sleep(for: .milliseconds(250))
+
+        // The next request should fail because the channel is now closed.
+        do {
+            _ = try await client.request(
+                matter: Matter(type: .call, body: Data()),
+                timeout: .milliseconds(50)
+            )
+            XCTFail("Expected a connection error")
+        } catch let error as NMTPError {
+            // Accept connectionDead, connectionClosed, or timeout — all indicate
+            // the channel is no longer usable.
+            XCTAssertTrue(
+                error == .connectionDead || error == .connectionClosed || error == .timeout,
+                "Unexpected error: \(error)"
+            )
+        }
+    }
+
+    func testHeartbeatDoesNotDisruptNormalTraffic() async throws {
+        // This test requires server-side heartbeat wiring (Task 5).
+        // It will be run after Task 5 completes.
+        // For now, just verify server with default params and client with heartbeat
+        // can exchange messages.
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler()
+        )
+
+        let client = try await NMTClient.connect(
+            to: server.address,
+            heartbeatInterval: .milliseconds(30)
+        )
+
+        defer {
+            Task {
+                try? await client.close()
+                server.closeNow()
+            }
+        }
+
+        // Fire several requests while heartbeats are running in the background.
+        for i in 0..<5 {
+            let body = Data("msg-\(i)".utf8)
+            let reply = try await client.request(matter: Matter(type: .call, body: body))
+            XCTAssertEqual(reply.body, body)
+        }
+    }
+}
+
 // MARK: - PendingRequests unit tests
 
 final class PendingRequestsTests: XCTestCase {

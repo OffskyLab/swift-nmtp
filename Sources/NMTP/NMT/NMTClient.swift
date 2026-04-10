@@ -31,6 +31,8 @@ extension NMTClient {
     public static func connect(
         to address: SocketAddress,
         tls: (any TLSContext)? = nil,
+        heartbeatInterval: Duration = .seconds(30),
+        heartbeatMissedLimit: Int = 2,
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTClient {
         let owned = eventLoopGroup == nil
@@ -40,6 +42,8 @@ extension NMTClient {
         var cont: AsyncStream<Matter>.Continuation!
         let pushes = AsyncStream<Matter> { cont = $0 }
         let inboundHandler = NMTClientInboundHandler(pendingRequests: pendingRequests, pushContinuation: cont)
+        // Capture only value types to avoid Sendable issues with [any ChannelHandler].
+        let idleTime = heartbeatInterval.timeAmount
         do {
             let channel = try await ClientBootstrap(group: elg)
                 .channelOption(.socketOption(.so_reuseaddr), value: 1)
@@ -54,6 +58,8 @@ extension NMTClient {
                                 tlsHandler,
                                 ByteToMessageHandler(MatterDecoder()),
                                 MessageToByteHandler(MatterEncoder()),
+                                IdleStateHandler(readTimeout: idleTime),
+                                HeartbeatHandler(missedLimit: heartbeatMissedLimit),
                                 inboundHandler,
                             ]).get()
                         }
@@ -62,6 +68,8 @@ extension NMTClient {
                         return channel.pipeline.addHandlers([
                             ByteToMessageHandler(MatterDecoder()),
                             MessageToByteHandler(MatterEncoder()),
+                            IdleStateHandler(readTimeout: idleTime),
+                            HeartbeatHandler(missedLimit: heartbeatMissedLimit),
                             inboundHandler,
                         ])
                     }
