@@ -148,6 +148,7 @@ private final class NMTClientInboundHandler: ChannelInboundHandler, Sendable {
 
     func channelInactive(context: ChannelHandlerContext) {
         pendingRequests.failAll(error: NMTPError.connectionClosed)
+        pushContinuation.finish()
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
