@@ -240,7 +240,7 @@ final class GracefulShutdownTests: XCTestCase {
         let clientB = try await NMTClient.connect(to: server.address)
 
         // clientA fires a slow request.
-        async let _ = clientA.request(matter: Matter(type: .call, body: Data()))
+        Task { _ = try? await clientA.request(matter: Matter(type: .call, body: Data())) }
 
         // Give the slow request a moment to reach the server handler.
         try await Task.sleep(for: .milliseconds(50))
