@@ -169,6 +169,8 @@ extension NMTServer {
                 return ch.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
             upgradePipelineHandler: { (ch: Channel, _: HTTPRequestHead) -> EventLoopFuture<Void> in
+                // Note: IdleStateHandler/HeartbeatHandler are not included in the WebSocket pipeline.
+                // Heartbeat support for WebSocket connections is out of scope for this implementation.
                 ch.pipeline.addHandlers([
                     NMTWebSocketFrameHandler(isClient: false),
                     ByteToMessageHandler(MatterDecoder()),
