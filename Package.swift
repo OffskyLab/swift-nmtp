@@ -16,6 +16,8 @@ let package = Package(
     targets: [
         .target(name: "NMTP", dependencies: [
             .product(name: "NIO", package: "swift-nio"),
+            .product(name: "NIOHTTP1", package: "swift-nio"),
+            .product(name: "NIOWebSocket", package: "swift-nio"),
             .product(name: "NIOExtras", package: "swift-nio-extras"),
             .product(name: "MessagePacker", package: "MessagePacker"),
             .product(name: "Logging", package: "swift-log"),
