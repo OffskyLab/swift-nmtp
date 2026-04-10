@@ -98,7 +98,7 @@ final class RequestTimeoutTests: XCTestCase {
         }
 
         try? await client.close()
-        server.close(promise: nil)
+        try? await server.close().get()
         try await elg.shutdownGracefully()
     }
 }

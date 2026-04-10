@@ -106,7 +106,9 @@ extension NMTClient {
                 try await Task.sleep(for: timeout)
                 throw NMTPError.timeout
             }
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                preconditionFailure("Task group unexpectedly empty — both tasks were added above")
+            }
             group.cancelAll()
             return result
         }
