@@ -22,6 +22,10 @@ let package = Package(
             .product(name: "MessagePacker", package: "MessagePacker"),
             .product(name: "Logging", package: "swift-log"),
         ]),
-        .testTarget(name: "NMTPTests", dependencies: ["NMTP"]),
+        .testTarget(name: "NMTPTests", dependencies: [
+            "NMTP",
+            .product(name: "NIO", package: "swift-nio"),
+            .product(name: "NIOWebSocket", package: "swift-nio"),
+        ]),
     ]
 )
