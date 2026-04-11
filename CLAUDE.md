@@ -31,19 +31,27 @@ This package is the wire protocol layer for the Nebula framework. It runs on Lin
 - **Use cross-platform Swift stdlib and open-source packages only.** Use `Synchronization.Mutex` for synchronous locking.
 - **macOS is development-only.** Minimum `.macOS(.v15)` is set solely for `Synchronization.Mutex` compatibility during local development.
 
-## WebSocket Transport — Naming Conventions
+## Transport — Naming Conventions
 
-Introduced 2026-04-10. Applies to all WebSocket-related code in `swift-nmtp`.
+Applies to all transport-related code in `swift-nmtp`.
+
+### NMTTransport protocol (in `NMTP`)
 
 | Concept | Name |
 |---------|------|
-| Transport selector enum | `NMTTransport` (`.tcp` / `.webSocket(path:)`) |
-| Frame bridge handler | `NMTWebSocketFrameHandler` (in `Sources/NMTP/Transport/`) |
-| Server pipeline builder | `NMTServer.buildWebSocketServerPipeline` (private static) |
-| Client connect helper | `NMTClient.connectWebSocket` (private static) |
+| Transport protocol | `NMTTransport` (`protocol`) |
+| Default TCP transport | `TCPTransport` (`struct`); `heartbeatInterval` + `missedLimit` params |
+| Protocol TLS helpers | `addTLSServerHandler(to:tls:then:)` / `addTLSClientHandler(to:tls:serverHostname:then:)` — `package` extension on `NMTTransport`; available to any transport in this package |
 
-**Binary-only rule:** The WebSocket layer uses `.binary` frames exclusively. Any frame whose opcode is not `.binary` (including text, continuation, ping, pong, and close) is silently dropped on the inbound path by `NMTWebSocketFrameHandler`. Heartbeat handling for WebSocket connections is out of scope for this implementation; `IdleStateHandler`/`HeartbeatHandler` are not added to the WebSocket pipeline.
+### NMTPWebSocket target
+
+| Concept | Name |
+|---------|------|
+| WebSocket transport | `WebSocketTransport` (`struct`); `path` param (default `"/nmt"`) |
+| Frame bridge handler | `NMTWebSocketFrameHandler` (internal to `NMTPWebSocket`; in `Sources/NMTPWebSocket/`) |
+
+**Binary-only rule:** `NMTWebSocketFrameHandler` uses `.binary` frames exclusively. Any inbound frame whose opcode is not `.binary` (including `.text`, `.continuation`, `.ping`, `.pong`, `.close`) is silently dropped.
 
 **Masking rule:** Client → server frames are always masked (RFC 6455 §5.3). Server → client frames are never masked. `NMTWebSocketFrameHandler(isClient:)` controls this.
 
-**Heartbeat:** `IdleStateHandler`/`HeartbeatHandler` are present in the TCP pipeline but intentionally omitted from the WebSocket pipeline (out of scope for initial implementation).
+**Heartbeat:** `IdleStateHandler`/`HeartbeatHandler` live inside `TCPTransport`. They are intentionally absent from `WebSocketTransport` — heartbeat over WebSocket is out of scope.
