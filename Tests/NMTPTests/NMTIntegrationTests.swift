@@ -43,7 +43,10 @@ final class NMTIntegrationTests: XCTestCase {
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 return nil
             }
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                XCTFail("Task group returned nil unexpectedly")
+                return nil
+            }
             group.cancelAll()
             return result
         }

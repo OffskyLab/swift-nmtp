@@ -29,6 +29,8 @@ final class HeartbeatHandler: ChannelDuplexHandler, @unchecked Sendable {
     private let missedLimit: Int
     private var missedBeats = 0
 
+    /// - Parameter missedLimit: The number of consecutive missed beats at which the connection
+    ///   is declared dead and closed. A value of 2 closes the channel after exactly 2 missed beats.
     init(missedLimit: Int) {
         self.missedLimit = missedLimit
     }
