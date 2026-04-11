@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y libjemalloc-dev
+
       - name: Build benchmarks
         working-directory: Benchmarks
         run: swift build -c release

@@ -27,12 +27,12 @@ public final class NMTClient: Sendable {
 }
 
 // MARK: - Connect
+
 extension NMTClient {
     public static func connect(
         to address: SocketAddress,
         tls: (any TLSContext)? = nil,
-        heartbeatInterval: Duration = .seconds(30),
-        heartbeatMissedLimit: Int = 2,
+        transport: any NMTTransport = TCPTransport(),
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTClient {
         let owned = eventLoopGroup == nil
@@ -41,41 +41,18 @@ extension NMTClient {
         let pendingRequests = PendingRequests()
         var cont: AsyncStream<Matter>.Continuation!
         let pushes = AsyncStream<Matter> { cont = $0 }
-        let inboundHandler = NMTClientInboundHandler(pendingRequests: pendingRequests, pushContinuation: cont)
-        // Capture only value types to avoid Sendable issues with [any ChannelHandler].
-        let idleTime = heartbeatInterval.timeAmount
+        let inboundHandler = NMTClientInboundHandler(
+            pendingRequests: pendingRequests, pushContinuation: cont
+        )
         do {
-            let channel = try await ClientBootstrap(group: elg)
-                .channelOption(.socketOption(.so_reuseaddr), value: 1)
-                .channelInitializer { channel in
-                    if let tls {
-                        let promise = channel.eventLoop.makePromise(of: Void.self)
-                        promise.completeWithTask {
-                            // SNI requires a hostname, not a raw IP — pass nil when only an IP is available.
-                            let tlsHandler = try await tls.makeClientHandler(serverHostname: nil)
-                            // Bridge EventLoopFuture<Void> into the async context.
-                            try await channel.pipeline.addHandlers([
-                                tlsHandler,
-                                ByteToMessageHandler(MatterDecoder()),
-                                MessageToByteHandler(MatterEncoder()),
-                                IdleStateHandler(readTimeout: idleTime),
-                                HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                                inboundHandler,
-                            ]).get()
-                        }
-                        return promise.futureResult
-                    } else {
-                        return channel.pipeline.addHandlers([
-                            ByteToMessageHandler(MatterDecoder()),
-                            MessageToByteHandler(MatterEncoder()),
-                            IdleStateHandler(readTimeout: idleTime),
-                            HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                            inboundHandler,
-                        ])
-                    }
+            let channel = try await transport.connect(
+                to: address,
+                tls: tls,
+                elg: elg,
+                applicationPipeline: { ch in
+                    ch.pipeline.addHandler(inboundHandler)
                 }
-                .connect(to: address)
-                .get()
+            )
             return NMTClient(
                 targetAddress: address,
                 channel: channel,
@@ -92,6 +69,7 @@ extension NMTClient {
 }
 
 // MARK: - Send
+
 extension NMTClient {
     public func fire(matter: Matter) {
         channel.writeAndFlush(matter, promise: nil)
@@ -106,7 +84,6 @@ extension NMTClient {
                         self.channel.writeAndFlush(matter, promise: nil)
                     }
                 } onCancel: {
-                    // Remove the pending UUID so no memory leak occurs.
                     self.pendingRequests.fail(id: matter.matterID, error: NMTPError.timeout)
                 }
             }
@@ -129,6 +106,7 @@ extension NMTClient {
 }
 
 // MARK: - Inbound Handler
+
 private final class NMTClientInboundHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Matter
     private let pendingRequests: PendingRequests

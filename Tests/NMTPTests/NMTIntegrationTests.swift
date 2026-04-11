@@ -40,26 +40,22 @@ final class NMTIntegrationTests: XCTestCase {
         client.fire(matter: trigger)
 
         var received: Matter?
-        for await matter in client.pushes {
-            received = matter
-            break
+        received = try await withThrowingTaskGroup(of: Matter?.self) { group in
+            group.addTask {
+                for await matter in client.pushes { return matter }
+                return nil
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
 
         XCTAssertNotNil(received)
         XCTAssertEqual(received?.body, pushBody)
-    }
-}
-
-// MARK: - Helpers
-
-/// Sends one unsolicited matter to the channel and returns nil (no direct reply).
-private struct PushHandler: NMTHandler {
-    let pushBody: Data
-
-    func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        let push = Matter(type: .reply, body: pushBody)
-        channel.writeAndFlush(push, promise: nil)
-        return nil
     }
 }
 
@@ -127,8 +123,7 @@ final class HeartbeatTests: XCTestCase {
         // Connection declared dead after 50 ms × 2 = 100 ms.
         let client = try await NMTClient.connect(
             to: silentServer.localAddress!,
-            heartbeatInterval: .milliseconds(50),
-            heartbeatMissedLimit: 2,
+            transport: TCPTransport(heartbeatInterval: .milliseconds(50), missedLimit: 2),
             eventLoopGroup: elg
         )
 
@@ -172,7 +167,7 @@ final class HeartbeatTests: XCTestCase {
 
         let client = try await NMTClient.connect(
             to: server.address,
-            heartbeatInterval: .milliseconds(30)
+            transport: TCPTransport(heartbeatInterval: .milliseconds(30))
         )
 
         defer {
