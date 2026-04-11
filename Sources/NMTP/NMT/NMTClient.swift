@@ -189,10 +189,29 @@ extension NMTClient {
         var headers = HTTPHeaders()
         headers.add(name: "Host", value: host)
         let requestHead = HTTPRequestHead(version: .http1_1, method: .GET, uri: path, headers: headers)
-        try await channel.writeAndFlush(HTTPClientRequestPart.head(requestHead)).get()
+        // Queue head without flushing so both head and end reach the NIO upgrade handler's
+        // write() method before any inbound server response can advance its state machine.
+        // A separate writeAndFlush(head) would suspend here and yield the event loop;
+        // if a fast local server returns 101 during that suspension the state transitions
+        // to .upgraderReady, which rejects the subsequent end write with
+        // writingToHandlerDuringUpgrade. By queuing head with promise:nil and flushing
+        // only when end is sent, both writes are processed in the same event-loop turn.
+        channel.write(HTTPClientRequestPart.head(requestHead), promise: nil)
+        try await channel.writeAndFlush(HTTPClientRequestPart.end(nil)).get()
+
+        // Safety net: if the server closes the channel without upgrading (e.g. rejects the upgrade),
+        // finish the signal so the for-await loop unblocks instead of hanging forever.
+        let signalCont = upgradeSignalContinuation!
+        channel.closeFuture.whenComplete { _ in
+            signalCont.finish()
+        }
 
         // Wait for the server's 101 Switching Protocols and pipeline swap to complete.
         for await _ in upgradeSignal { break }
+
+        guard channel.isActive else {
+            throw NMTPError.fail(message: "WebSocket upgrade rejected: server closed connection without upgrading")
+        }
 
         return channel
     }
