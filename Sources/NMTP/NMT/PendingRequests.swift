@@ -4,23 +4,23 @@ import Synchronization
 package final class PendingRequests: Sendable {
     private let waiting = Mutex<[UUID: CheckedContinuation<Matter, Error>]>([:])
 
-    func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
+    package func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
         waiting.withLock { $0[id] = continuation }
     }
 
     @discardableResult
-    func fulfill(_ matter: Matter) -> Bool {
+    package func fulfill(_ matter: Matter) -> Bool {
         let continuation = waiting.withLock { $0.removeValue(forKey: matter.matterID) }
         continuation?.resume(returning: matter)
         return continuation != nil
     }
 
-    func fail(id: UUID, error: Error) {
+    package func fail(id: UUID, error: Error) {
         let continuation = waiting.withLock { $0.removeValue(forKey: id) }
         continuation?.resume(throwing: error)
     }
 
-    func failAll(error: Error) {
+    package func failAll(error: Error) {
         let all = waiting.withLock { dict -> [CheckedContinuation<Matter, Error>] in
             let values = Array(dict.values)
             dict.removeAll()
