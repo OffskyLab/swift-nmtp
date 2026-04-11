@@ -77,3 +77,33 @@ struct MatterTests {
         #expect(Matter.headerSize == 27)
     }
 }
+
+@Suite("MatterBehavior Tests")
+struct MatterBehaviorTests {
+
+    @Test("MatterBehavior raw values")
+    func behaviorRawValues() {
+        #expect(MatterBehavior.heartbeat.rawValue == 0x00)
+        #expect(MatterBehavior.command.rawValue  == 0x01)
+        #expect(MatterBehavior.query.rawValue    == 0x02)
+        #expect(MatterBehavior.event.rawValue    == 0x03)
+        #expect(MatterBehavior.reply.rawValue    == 0x04)
+    }
+
+    @Test("MatterBehavior round-trips through UInt8")
+    func behaviorRoundTrip() {
+        for raw: UInt8 in 0x00...0x04 {
+            let b = MatterBehavior(rawValue: raw)
+            #expect(b != nil)
+            #expect(b!.rawValue == raw)
+        }
+        #expect(MatterBehavior(rawValue: 0x05) == nil)
+    }
+
+    @Test("NMTPConstants values")
+    func nmtpConstants() {
+        #expect(NMTPConstants.maxEventTTL     == 15)
+        #expect(NMTPConstants.defaultEventTTL == 7)
+        #expect(NMTPConstants.defaultEventTTL < NMTPConstants.maxEventTTL)
+    }
+}
