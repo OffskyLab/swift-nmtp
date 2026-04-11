@@ -1,4 +1,5 @@
 import Foundation
+import NIO
 import NMTP
 import Synchronization
 
@@ -85,5 +86,40 @@ extension PeerDispatcher {
             throw NMTPError.unexpectedReplyType(expected: R.messageType, actual: replyPayload.type)
         }
         return try JSONDecoder().decode(R.self, from: replyPayload.body)
+    }
+}
+
+// MARK: - Simplified factories
+
+extension PeerDispatcher {
+    public static func connect(
+        to address: SocketAddress,
+        tls: (any TLSContext)? = nil,
+        transport: any NMTTransport = TCPTransport(),
+        eventLoopGroup: MultiThreadedEventLoopGroup? = nil
+    ) async throws -> PeerDispatcher {
+        let peer = try await Peer.connect(
+            to: address,
+            tls: tls,
+            transport: transport,
+            eventLoopGroup: eventLoopGroup
+        )
+        return PeerDispatcher(peer: peer)
+    }
+
+    public static func listen(
+        on address: SocketAddress,
+        tls: (any TLSContext)? = nil,
+        transport: any NMTTransport = TCPTransport(),
+        eventLoopGroup: MultiThreadedEventLoopGroup? = nil,
+        configure: @escaping @Sendable (PeerDispatcher) -> Void
+    ) async throws -> PeerDispatcherListener {
+        let listener = try await PeerListener.bind(
+            on: address,
+            tls: tls,
+            transport: transport,
+            eventLoopGroup: eventLoopGroup
+        )
+        return PeerDispatcherListener(listener: listener, configure: configure)
     }
 }
