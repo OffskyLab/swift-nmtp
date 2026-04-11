@@ -20,7 +20,7 @@ final class PeerListenerTests: XCTestCase {
         defer { Task { try? await connector.close() } }
 
         // Connector echoes back any incoming matter (listener will call request)
-        Task {
+        let echoTask = Task {
             for await matter in connector.incoming {
                 connector.fire(matter: Matter(
                     behavior: .reply,
@@ -29,6 +29,7 @@ final class PeerListenerTests: XCTestCase {
                 ))
             }
         }
+        defer { echoTask.cancel() }
 
         let lPeer = try await listenerPeerTask.value
 
@@ -51,12 +52,32 @@ final class PeerListenerTests: XCTestCase {
         }
 
         let connector = try await Peer.connect(to: listener.address)
+        defer { Task { try? await connector.close() } }
         let lPeer = try await listenerPeerTask.value
 
         try await connector.close()
 
         var count = 0
         for await _ in lPeer.incoming { count += 1 }
+        XCTAssertEqual(count, 0)
+    }
+
+    func testListenerCloseTerminatesPeersStream() async throws {
+        let listener = try await PeerListener.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0)
+        )
+
+        // Collect peers in background
+        let collectTask = Task<Int, Error> {
+            var count = 0
+            for await _ in listener.peers { count += 1 }
+            return count
+        }
+
+        // Close listener without accepting any peers
+        try await listener.close()
+
+        let count = try await collectTask.value
         XCTAssertEqual(count, 0)
     }
 }

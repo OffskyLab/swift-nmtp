@@ -4,7 +4,7 @@ public struct PeerStream: AsyncSequence, Sendable {
 
     private let _stream: AsyncStream<Peer>
 
-    init(_ stream: AsyncStream<Peer>) {
+    package init(_ stream: AsyncStream<Peer>) {
         self._stream = stream
     }
 

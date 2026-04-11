@@ -66,8 +66,9 @@ extension PeerListener {
                             incomingContinuation: incomingCont,
                             ownedEventLoopGroup: nil  // listener owns the ELG, not the peer
                         )
-                        capturedCont.yield(peer)
-                        return ch.pipeline.addHandler(handler)
+                        let future = ch.pipeline.addHandler(handler)
+                        future.whenSuccess { _ in capturedCont.yield(peer) }
+                        return future
                     }
                 )
             }
