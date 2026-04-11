@@ -35,7 +35,7 @@ extension NMTTransport {
 
     /// Wraps the async TLS server-handler installation into an `EventLoopFuture<Void>`,
     /// then chains `next(channel)`.
-    func addTLSServerHandler(
+    package func addTLSServerHandler(
         to channel: Channel,
         tls: any TLSContext,
         then next: @escaping @Sendable (Channel) -> EventLoopFuture<Void>
@@ -51,7 +51,7 @@ extension NMTTransport {
 
     /// Wraps the async TLS client-handler installation into an `EventLoopFuture<Void>`,
     /// then chains `next(channel)`.
-    func addTLSClientHandler(
+    package func addTLSClientHandler(
         to channel: Channel,
         tls: any TLSContext,
         serverHostname: String?,
