@@ -52,7 +52,6 @@ final class PeerListenerTests: XCTestCase {
         }
 
         let connector = try await Peer.connect(to: listener.address)
-        defer { Task { try? await connector.close() } }
         let lPeer = try await listenerPeerTask.value
 
         try await connector.close()

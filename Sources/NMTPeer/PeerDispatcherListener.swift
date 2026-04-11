@@ -30,7 +30,7 @@ extension PeerDispatcherListener {
 
             let task = Task<Void, Never> { [self] in
                 _ = try? await dispatcher.run()
-                dispatcherTasks.withLock { $0.removeValue(forKey: id) }
+                _ = dispatcherTasks.withLock { $0.removeValue(forKey: id) }
             }
             dispatcherTasks.withLock { $0[id] = task }
         }
@@ -42,7 +42,13 @@ extension PeerDispatcherListener {
             tasks.removeAll()
             return copy
         }
-        tasks.values.forEach { $0.cancel() }
+        // Cancel tasks then await completion so no task runs after ELG shutdown.
+        await withTaskGroup(of: Void.self) { group in
+            for task in tasks.values {
+                task.cancel()
+                group.addTask { await task.value }
+            }
+        }
         try await listener.close()
     }
 }
