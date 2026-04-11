@@ -52,8 +52,8 @@ final class PeerConnectTests: XCTestCase {
                 return nil
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(5))
-                return nil
+                try await Task.sleep(for: .milliseconds(500))
+                throw CancellationError()
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -62,6 +62,21 @@ final class PeerConnectTests: XCTestCase {
 
         XCTAssertNotNil(received)
         XCTAssertEqual(received?.payload, pushPayload)
+    }
+
+    func testClosePropagatesToIncoming() async throws {
+        let server = try await NMTServer.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0),
+            handler: EchoHandler()
+        )
+        defer { server.closeNow() }
+
+        let peer = try await Peer.connect(to: server.address)
+        try await peer.close()
+
+        var count = 0
+        for await _ in peer.incoming { count += 1 }
+        XCTAssertEqual(count, 0)
     }
 }
 

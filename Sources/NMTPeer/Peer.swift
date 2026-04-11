@@ -9,8 +9,8 @@ public final class Peer: Sendable {
     /// Unsolicited inbound Matters — those not matching any pending `request`.
     public let incoming: MatterStream
 
-    let channel: Channel
-    let pendingRequests: PendingRequests
+    private let channel: Channel
+    private let pendingRequests: PendingRequests
     private let incomingContinuation: AsyncStream<Matter>.Continuation
     private let ownedEventLoopGroup: MultiThreadedEventLoopGroup?
 
@@ -21,7 +21,10 @@ public final class Peer: Sendable {
         incomingContinuation: AsyncStream<Matter>.Continuation,
         ownedEventLoopGroup: MultiThreadedEventLoopGroup?
     ) {
-        self.remoteAddress = channel.remoteAddress! // safe: set on connected/accepted channels
+        guard let addr = channel.remoteAddress else {
+            preconditionFailure("Peer.init called with a channel that has no remoteAddress")
+        }
+        self.remoteAddress = addr
         self.channel = channel
         self.pendingRequests = pendingRequests
         self.incoming = incoming
@@ -99,7 +102,7 @@ extension Peer {
                 throw NMTPError.timeout
             }
             guard let result = try await group.next() else {
-                preconditionFailure("Task group unexpectedly empty")
+                preconditionFailure("Task group unexpectedly empty — both tasks were added above")
             }
             group.cancelAll()
             return result
