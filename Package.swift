@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "NMTP", targets: ["NMTP"]),
         .library(name: "NMTPWebSocket", targets: ["NMTPWebSocket"]),
+        .library(name: "NMTPeer", targets: ["NMTPeer"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.40.0"),
@@ -25,6 +26,10 @@ let package = Package(
             .product(name: "NIOHTTP1", package: "swift-nio"),
             .product(name: "NIOWebSocket", package: "swift-nio"),
         ]),
+        .target(name: "NMTPeer", dependencies: [
+            "NMTP",
+            .product(name: "NIO", package: "swift-nio"),
+        ]),
         .testTarget(name: "NMTPTests", dependencies: [
             "NMTP",
             .product(name: "NIO", package: "swift-nio"),
@@ -33,6 +38,11 @@ let package = Package(
             "NMTPWebSocket",
             .product(name: "NIO", package: "swift-nio"),
             .product(name: "NIOWebSocket", package: "swift-nio"),
+        ]),
+        .testTarget(name: "NMTPeerTests", dependencies: [
+            "NMTPeer",
+            "NMTP",
+            .product(name: "NIO", package: "swift-nio"),
         ]),
     ]
 )

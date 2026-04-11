@@ -1,48 +1,56 @@
 import NIO
+import NMTP
 
-public final class NMTClient: Sendable {
-    public let targetAddress: SocketAddress
-    public let pushes: MatterStream
+/// A single established P2P connection. Both sides have the same API regardless of
+/// which side initiated the connection.
+public final class Peer: Sendable {
+    /// Remote address of this connection.
+    public let remoteAddress: SocketAddress
+    /// Unsolicited inbound Matters — those not matching any pending `request`.
+    public let incoming: MatterStream
 
     private let channel: Channel
     private let pendingRequests: PendingRequests
-    private let pushContinuation: AsyncStream<Matter>.Continuation
+    private let incomingContinuation: AsyncStream<Matter>.Continuation
     private let ownedEventLoopGroup: MultiThreadedEventLoopGroup?
 
-    internal init(
-        targetAddress: SocketAddress,
+    init(
         channel: Channel,
         pendingRequests: PendingRequests,
-        pushes: MatterStream,
-        pushContinuation: AsyncStream<Matter>.Continuation,
+        incoming: MatterStream,
+        incomingContinuation: AsyncStream<Matter>.Continuation,
         ownedEventLoopGroup: MultiThreadedEventLoopGroup?
     ) {
-        self.targetAddress = targetAddress
+        guard let addr = channel.remoteAddress else {
+            preconditionFailure("Peer.init called with a channel that has no remoteAddress")
+        }
+        self.remoteAddress = addr
         self.channel = channel
         self.pendingRequests = pendingRequests
-        self.pushes = pushes
-        self.pushContinuation = pushContinuation
+        self.incoming = incoming
+        self.incomingContinuation = incomingContinuation
         self.ownedEventLoopGroup = ownedEventLoopGroup
     }
 }
 
 // MARK: - Connect
 
-extension NMTClient {
+extension Peer {
     public static func connect(
         to address: SocketAddress,
         tls: (any TLSContext)? = nil,
         transport: any NMTTransport = TCPTransport(),
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
-    ) async throws -> NMTClient {
+    ) async throws -> Peer {
         let owned = eventLoopGroup == nil
             ? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount) : nil
         let elg = eventLoopGroup ?? owned!
         let pendingRequests = PendingRequests()
         var cont: AsyncStream<Matter>.Continuation!
-        let pushesStream = AsyncStream<Matter> { cont = $0 }
-        let inboundHandler = NMTClientInboundHandler(
-            pendingRequests: pendingRequests, pushContinuation: cont
+        let incomingStream = AsyncStream<Matter> { cont = $0 }
+        let inboundHandler = PeerInboundHandler(
+            pendingRequests: pendingRequests,
+            incomingContinuation: cont
         )
         do {
             let channel = try await transport.connect(
@@ -53,12 +61,11 @@ extension NMTClient {
                     ch.pipeline.addHandler(inboundHandler)
                 }
             )
-            return NMTClient(
-                targetAddress: address,
+            return Peer(
                 channel: channel,
                 pendingRequests: pendingRequests,
-                pushes: MatterStream(pushesStream),
-                pushContinuation: cont,
+                incoming: MatterStream(incomingStream),
+                incomingContinuation: cont,
                 ownedEventLoopGroup: owned
             )
         } catch {
@@ -68,14 +75,17 @@ extension NMTClient {
     }
 }
 
-// MARK: - Send
+// MARK: - Send / Receive
 
-extension NMTClient {
+extension Peer {
     public func fire(matter: Matter) {
         channel.writeAndFlush(matter, promise: nil)
     }
 
-    public func request(matter: Matter, timeout: Duration = .seconds(30)) async throws -> Matter {
+    public func request(
+        matter: Matter,
+        timeout: Duration = .seconds(30)
+    ) async throws -> Matter {
         return try await withThrowingTaskGroup(of: Matter.self) { group in
             group.addTask {
                 try await withTaskCancellationHandler {
@@ -102,35 +112,5 @@ extension NMTClient {
     public func close() async throws {
         try await channel.close().get()
         try await ownedEventLoopGroup?.shutdownGracefully()
-    }
-}
-
-// MARK: - Inbound Handler
-
-private final class NMTClientInboundHandler: ChannelInboundHandler, Sendable {
-    typealias InboundIn = Matter
-    private let pendingRequests: PendingRequests
-    private let pushContinuation: AsyncStream<Matter>.Continuation
-
-    init(pendingRequests: PendingRequests, pushContinuation: AsyncStream<Matter>.Continuation) {
-        self.pendingRequests = pendingRequests
-        self.pushContinuation = pushContinuation
-    }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let matter = unwrapInboundIn(data)
-        if !pendingRequests.fulfill(matter) {
-            pushContinuation.yield(matter)
-        }
-    }
-
-    func channelInactive(context: ChannelHandlerContext) {
-        pendingRequests.failAll(error: NMTPError.connectionClosed)
-        pushContinuation.finish()
-    }
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        pendingRequests.failAll(error: error)
-        context.close(promise: nil)
     }
 }
