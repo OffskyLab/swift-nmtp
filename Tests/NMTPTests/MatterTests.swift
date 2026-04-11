@@ -110,3 +110,48 @@ struct NMTPConstantsTests {
         #expect(NMTPConstants.defaultEventTTL < NMTPConstants.maxEventTTL)
     }
 }
+
+@Suite("MatterPayload Tests")
+struct MatterPayloadTests {
+
+    @Test("MatterPayload encodes type + body")
+    func encodesTypeAndBody() {
+        let body = Data([0xAA, 0xBB])
+        let envelope = MatterPayload(type: 0x0042, body: body)
+        let encoded = envelope.encoded
+
+        #expect(encoded.count == 4)           // 2 type bytes + 2 body bytes
+        #expect(encoded[0] == 0x00)           // high byte of 0x0042
+        #expect(encoded[1] == 0x42)           // low byte of 0x0042
+        #expect(encoded[2] == 0xAA)
+        #expect(encoded[3] == 0xBB)
+    }
+
+    @Test("MatterPayload round-trips through Data")
+    func roundTrip() throws {
+        let original = MatterPayload(type: 0x0007, body: Data("hello".utf8))
+        let recovered = try MatterPayload(data: original.encoded)
+        #expect(recovered.type == original.type)
+        #expect(recovered.body == original.body)
+    }
+
+    @Test("MatterPayload with zero type and empty body")
+    func untyped() throws {
+        let envelope = MatterPayload()
+        let encoded = envelope.encoded
+        #expect(encoded.count == 2)
+        #expect(encoded[0] == 0x00)
+        #expect(encoded[1] == 0x00)
+
+        let recovered = try MatterPayload(data: encoded)
+        #expect(recovered.type == 0)
+        #expect(recovered.body.isEmpty)
+    }
+
+    @Test("MatterPayload init(data:) throws on too-short input")
+    func tooShortThrows() {
+        #expect(throws: NMTPError.self) {
+            _ = try MatterPayload(data: Data([0x00]))
+        }
+    }
+}
