@@ -1,14 +1,9 @@
 import Logging
 import NIO
-import NIOHTTP1
-import NIOWebSocket
 import Synchronization
 
 // MARK: - ServerState
 
-/// Tracks the number of currently-executing `NMTHandler.handle()` calls.
-/// Thread-safe via a single `Mutex`-protected struct.
-/// Created once per server instance; shared across all child-channel handlers.
 final class ServerState: Sendable {
     private struct Box {
         var inflightCount = 0
@@ -33,7 +28,6 @@ final class ServerState: Sendable {
         }
     }
 
-    /// Suspends until all in-flight handler calls complete, then returns.
     func drain() async {
         await withCheckedContinuation { continuation in
             box.withLock { b in
@@ -75,37 +69,26 @@ extension NMTServer {
         on address: SocketAddress,
         handler: any NMTHandler,
         tls: (any TLSContext)? = nil,
-        transport: NMTTransport = .tcp,
-        heartbeatInterval: Duration = .seconds(30),
-        heartbeatMissedLimit: Int = 2,
+        transport: any NMTTransport = TCPTransport(),
         eventLoopGroup: MultiThreadedEventLoopGroup? = nil
     ) async throws -> NMTServer {
-        let owned = eventLoopGroup == nil ? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount) : nil
+        let owned = eventLoopGroup == nil
+            ? MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount) : nil
         let elg = eventLoopGroup ?? owned!
         let serverState = ServerState()
         let channel = try await ServerBootstrap(group: elg)
             .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
-                switch transport {
-                case .tcp:
-                    return Self.buildTCPServerPipeline(
-                        channel: channel,
-                        handler: handler,
-                        tls: tls,
-                        serverState: serverState,
-                        heartbeatInterval: heartbeatInterval,
-                        heartbeatMissedLimit: heartbeatMissedLimit
-                    )
-                case .webSocket(let path):
-                    return Self.buildWebSocketServerPipeline(
-                        channel: channel,
-                        handler: handler,
-                        tls: tls,
-                        serverState: serverState,
-                        path: path
-                    )
-                }
+                transport.buildServerPipeline(
+                    channel: channel,
+                    tls: tls,
+                    applicationPipeline: { ch in
+                        ch.pipeline.addHandler(
+                            NMTServerInboundHandler(handler: handler, serverState: serverState)
+                        )
+                    }
+                )
             }
             .bind(to: address)
             .get()
@@ -116,84 +99,6 @@ extension NMTServer {
             ownedEventLoopGroup: owned,
             serverState: serverState
         )
-    }
-
-    private static func buildTCPServerPipeline(
-        channel: Channel,
-        handler: any NMTHandler,
-        tls: (any TLSContext)?,
-        serverState: ServerState,
-        heartbeatInterval: Duration,
-        heartbeatMissedLimit: Int
-    ) -> EventLoopFuture<Void> {
-        let serverHandler = NMTServerInboundHandler(handler: handler, serverState: serverState)
-        if let tls {
-            let promise = channel.eventLoop.makePromise(of: Void.self)
-            promise.completeWithTask {
-                let tlsHandler = try await tls.makeServerHandler()
-                try await channel.pipeline.addHandlers([
-                    tlsHandler,
-                    ByteToMessageHandler(MatterDecoder()),
-                    MessageToByteHandler(MatterEncoder()),
-                    IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
-                    HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                    serverHandler,
-                ]).get()
-            }
-            return promise.futureResult
-        } else {
-            return channel.pipeline.addHandlers([
-                ByteToMessageHandler(MatterDecoder()),
-                MessageToByteHandler(MatterEncoder()),
-                IdleStateHandler(readTimeout: heartbeatInterval.timeAmount),
-                HeartbeatHandler(missedLimit: heartbeatMissedLimit),
-                serverHandler,
-            ])
-        }
-    }
-
-    private static func buildWebSocketServerPipeline(
-        channel: Channel,
-        handler: any NMTHandler,
-        tls: (any TLSContext)?,
-        serverState: ServerState,
-        path: String
-    ) -> EventLoopFuture<Void> {
-        // NIOWebSocketServerUpgrader adds WebSocketFrameDecoder + WebSocketFrameEncoder
-        // automatically before calling upgradePipelineHandler.
-        let upgrader = NIOWebSocketServerUpgrader(
-            shouldUpgrade: { (ch: Channel, head: HTTPRequestHead) -> EventLoopFuture<HTTPHeaders?> in
-                guard head.uri == path else {
-                    return ch.eventLoop.makeSucceededFuture(nil)
-                }
-                return ch.eventLoop.makeSucceededFuture(HTTPHeaders())
-            },
-            upgradePipelineHandler: { (ch: Channel, _: HTTPRequestHead) -> EventLoopFuture<Void> in
-                // Note: IdleStateHandler/HeartbeatHandler are not included in the WebSocket pipeline.
-                // Heartbeat support for WebSocket connections is out of scope for this implementation.
-                ch.pipeline.addHandlers([
-                    NMTWebSocketFrameHandler(isClient: false),
-                    ByteToMessageHandler(MatterDecoder()),
-                    MessageToByteHandler(MatterEncoder()),
-                    NMTServerInboundHandler(handler: handler, serverState: serverState),
-                ])
-            }
-        )
-        if let tls {
-            let promise = channel.eventLoop.makePromise(of: Void.self)
-            promise.completeWithTask {
-                let tlsHandler = try await tls.makeServerHandler()
-                try await channel.pipeline.addHandler(tlsHandler).get()
-                try await channel.pipeline.configureHTTPServerPipeline(
-                    withServerUpgrade: (upgraders: [upgrader], completionHandler: { _ in })
-                ).get()
-            }
-            return promise.futureResult
-        } else {
-            return channel.pipeline.configureHTTPServerPipeline(
-                withServerUpgrade: (upgraders: [upgrader], completionHandler: { _ in })
-            )
-        }
     }
 }
 
@@ -214,15 +119,9 @@ extension NMTServer {
         channel.close(promise: nil)
     }
 
-    /// Gracefully stops the server:
-    /// 1. Stops accepting new connections.
-    /// 2. Waits up to `gracePeriod` for all in-flight `NMTHandler.handle()` calls to complete.
-    /// 3. Shuts down the event loop group (closing all remaining channels).
     public func shutdown(gracePeriod: Duration = .seconds(30)) async {
         serverState.beginShutdown()
-        // Stop accepting new connections (child channels remain open for draining).
         try? await channel.close().get()
-        // Drain with a deadline: whichever finishes first (drain or sleep) wins.
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.serverState.drain() }
             group.addTask { try? await Task.sleep(for: gracePeriod) }
@@ -248,8 +147,6 @@ private final class NMTServerInboundHandler: ChannelInboundHandler, Sendable {
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        // During drain, reject new requests by closing the child channel.
-        // The client's channelInactive fires, failing pending requests with .connectionClosed.
         if serverState.isShuttingDown {
             context.close(promise: nil)
             return

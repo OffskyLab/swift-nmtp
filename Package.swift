@@ -17,8 +17,6 @@ let package = Package(
     targets: [
         .target(name: "NMTP", dependencies: [
             .product(name: "NIO", package: "swift-nio"),
-            .product(name: "NIOHTTP1", package: "swift-nio"),       // removed in Task 2
-            .product(name: "NIOWebSocket", package: "swift-nio"),   // removed in Task 2
             .product(name: "NIOExtras", package: "swift-nio-extras"),
             .product(name: "MessagePacker", package: "MessagePacker"),
             .product(name: "Logging", package: "swift-log"),
@@ -32,7 +30,6 @@ let package = Package(
         .testTarget(name: "NMTPTests", dependencies: [
             "NMTP",
             .product(name: "NIO", package: "swift-nio"),
-            .product(name: "NIOWebSocket", package: "swift-nio"),   // removed in Task 2
         ]),
         .testTarget(name: "NMTPWebSocketTests", dependencies: [
             "NMTPWebSocket",

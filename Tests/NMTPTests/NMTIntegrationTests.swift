@@ -123,8 +123,7 @@ final class HeartbeatTests: XCTestCase {
         // Connection declared dead after 50 ms × 2 = 100 ms.
         let client = try await NMTClient.connect(
             to: silentServer.localAddress!,
-            heartbeatInterval: .milliseconds(50),
-            heartbeatMissedLimit: 2,
+            transport: TCPTransport(heartbeatInterval: .milliseconds(50), missedLimit: 2),
             eventLoopGroup: elg
         )
 
@@ -168,7 +167,7 @@ final class HeartbeatTests: XCTestCase {
 
         let client = try await NMTClient.connect(
             to: server.address,
-            heartbeatInterval: .milliseconds(30)
+            transport: TCPTransport(heartbeatInterval: .milliseconds(30))
         )
 
         defer {
