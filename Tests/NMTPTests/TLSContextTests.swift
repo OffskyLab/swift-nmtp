@@ -52,7 +52,7 @@ final class TLSContextTests: XCTestCase {
         let client = try await NMTClient.connect(to: server.address, tls: nil)
         defer { Task { try? await client.close() } }
 
-        let matter = Matter(type: .call, body: Data("ping".utf8))
+        let matter = Matter(behavior: .command, payload: Data("ping".utf8))
         let reply = try await client.request(matter: matter)
         XCTAssertEqual(reply.matterID, matter.matterID)
     }

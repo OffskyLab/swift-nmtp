@@ -11,7 +11,7 @@ import NIOExtras
 ///
 /// When the reader is idle for `heartbeatInterval`, `IdleStateHandler` fires
 /// `IdleStateHandler.IdleStateEvent.read`. `HeartbeatHandler` responds by sending
-/// a `Matter(type: .heartbeat)` and incrementing `missedBeats`. If `missedBeats`
+/// a `Matter(behavior: .heartbeat)` and incrementing `missedBeats`. If `missedBeats`
 /// reaches `missedLimit`, the channel is closed with `NMTPError.connectionDead`.
 ///
 /// Any received data (heartbeat reply or regular matter) resets `missedBeats`.
@@ -38,9 +38,9 @@ final class HeartbeatHandler: ChannelDuplexHandler, @unchecked Sendable {
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         missedBeats = 0                          // any received data = connection is alive
         let matter = unwrapInboundIn(data)
-        if matter.type == .heartbeat {
+        if matter.behavior == .heartbeat {
             // Reply to keep the other side's idle timer alive; don't forward.
-            let reply = Matter(type: .heartbeat, body: Data())
+            let reply = Matter(behavior: .heartbeat, payload: Data())
             context.writeAndFlush(wrapOutboundOut(reply), promise: nil)
             return
         }
@@ -54,13 +54,12 @@ final class HeartbeatHandler: ChannelDuplexHandler, @unchecked Sendable {
         }
         missedBeats += 1
         guard missedBeats < missedLimit else {
-            // Declare the connection dead.
             context.fireErrorCaught(NMTPError.connectionDead)
             context.close(promise: nil)
             return
         }
         // Send a heartbeat probe.
-        let probe = Matter(type: .heartbeat, body: Data())
+        let probe = Matter(behavior: .heartbeat, payload: Data())
         context.writeAndFlush(wrapOutboundOut(probe), promise: nil)
     }
 
