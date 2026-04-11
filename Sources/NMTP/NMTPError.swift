@@ -12,4 +12,7 @@ public enum NMTPError: Error, Equatable {
 
     /// The server is draining in-flight requests and will not accept new ones.
     case shuttingDown
+
+    /// A typed request received a reply whose wire type does not match the expected response type.
+    case unexpectedReplyType(expected: UInt16, actual: UInt16)
 }

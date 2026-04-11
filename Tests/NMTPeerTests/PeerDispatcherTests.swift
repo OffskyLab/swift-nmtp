@@ -79,7 +79,10 @@ final class PeerDispatcherTests: XCTestCase {
         defer { Task { try? await clientPeer.close() } }
 
         let dispatcher = PeerDispatcher(peer: clientPeer)
-        dispatcher.register(Pong.self) { _, _ in nil }
+        dispatcher.register(Ping.self) { ping, _ in
+            XCTAssertEqual(ping.body, "still alive")
+            return Pong(body: "confirmed")
+        }
 
         let runTask = Task { try? await dispatcher.run() }
         defer { runTask.cancel() }
@@ -92,15 +95,13 @@ final class PeerDispatcherTests: XCTestCase {
         let notifyMatter = Matter.make(behavior: .command, type: Notify.messageType, body: notifyBody)
         serverPeer.fire(matter: notifyMatter)
 
-        try await Task.sleep(for: .milliseconds(100))
-
-        // Dispatcher is still running — send a registered Pong to verify
-        let pongBody = try JSONEncoder().encode(Pong(body: "still alive"))
-        let pongMatter = Matter.make(behavior: .command, type: Pong.messageType, body: pongBody)
-        serverPeer.fire(matter: pongMatter)
-
-        try await Task.sleep(for: .milliseconds(100))
-        // Reaching here without crash = pass
+        // A successful round-trip after the dropped message proves the dispatcher stayed alive.
+        let pingBody = try JSONEncoder().encode(Ping(body: "still alive"))
+        let pingMatter = Matter.make(behavior: .command, type: Ping.messageType, body: pingBody)
+        let replyMatter = try await serverPeer.request(matter: pingMatter, timeout: .seconds(1))
+        let replyPayload = try replyMatter.decodePayload()
+        let pong = try JSONDecoder().decode(Pong.self, from: replyPayload.body)
+        XCTAssertEqual(pong.body, "confirmed")
     }
 
     func testHandlerReturningNilSendsNoReply() async throws {
@@ -134,6 +135,45 @@ final class PeerDispatcherTests: XCTestCase {
             XCTFail("Expected timeout — handler returns nil so no reply")
         } catch NMTPError.timeout {
             // Expected
+        }
+    }
+
+    func testTypedRequestRejectsWrongReplyType() async throws {
+        let listener = try await PeerListener.bind(
+            on: .makeAddressResolvingHost("127.0.0.1", port: 0)
+        )
+        defer { Task { try? await listener.close() } }
+
+        let listenerPeerTask = Task<Peer, Error> {
+            for await peer in listener.peers { return peer }
+            throw NMTPError.connectionClosed
+        }
+
+        let clientPeer = try await Peer.connect(to: listener.address)
+        defer { Task { try? await clientPeer.close() } }
+
+        let clientDispatcher = PeerDispatcher(peer: clientPeer)
+
+        let serverPeer = try await listenerPeerTask.value
+        defer { Task { try? await serverPeer.close() } }
+
+        let serverDispatcher = PeerDispatcher(peer: serverPeer)
+        serverDispatcher.register(Ping.self) { _, _ in
+            Notify(text: "wrong type")
+        }
+
+        let runTask = Task {
+            async let clientRun: Void = { try await clientDispatcher.run() }()
+            async let serverRun: Void = { try await serverDispatcher.run() }()
+            _ = try await (clientRun, serverRun)
+        }
+        defer { runTask.cancel() }
+
+        do {
+            _ = try await clientDispatcher.request(Ping(body: "hello"), expecting: Pong.self, timeout: .seconds(1))
+            XCTFail("Expected unexpectedReplyType when the reply type does not match Pong")
+        } catch let error as NMTPError {
+            XCTAssertEqual(error, .unexpectedReplyType(expected: Pong.messageType, actual: Notify.messageType))
         }
     }
 }

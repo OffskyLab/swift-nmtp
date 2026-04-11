@@ -1,5 +1,3 @@
-import Foundation
-
 /// A type-identified, Codable message for use with `PeerDispatcher`.
 ///
 /// Conforming types must provide a unique `messageType` (UInt16) that identifies
