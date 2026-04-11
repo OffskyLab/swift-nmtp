@@ -4,6 +4,8 @@ import Synchronization
 package final class PendingRequests: Sendable {
     private let waiting = Mutex<[UUID: CheckedContinuation<Matter, Error>]>([:])
 
+    package init() {}
+
     package func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
         waiting.withLock { $0[id] = continuation }
     }

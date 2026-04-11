@@ -4,7 +4,7 @@ public struct MatterStream: AsyncSequence, Sendable {
 
     private let _stream: AsyncStream<Matter>
 
-    init(_ stream: AsyncStream<Matter>) {
+    package init(_ stream: AsyncStream<Matter>) {
         self._stream = stream
     }
 
