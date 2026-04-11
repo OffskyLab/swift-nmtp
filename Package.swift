@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "NMTP", targets: ["NMTP"]),
+        .library(name: "NMTPWebSocket", targets: ["NMTPWebSocket"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.40.0"),
@@ -16,14 +17,25 @@ let package = Package(
     targets: [
         .target(name: "NMTP", dependencies: [
             .product(name: "NIO", package: "swift-nio"),
-            .product(name: "NIOHTTP1", package: "swift-nio"),
-            .product(name: "NIOWebSocket", package: "swift-nio"),
+            .product(name: "NIOHTTP1", package: "swift-nio"),       // removed in Task 2
+            .product(name: "NIOWebSocket", package: "swift-nio"),   // removed in Task 2
             .product(name: "NIOExtras", package: "swift-nio-extras"),
             .product(name: "MessagePacker", package: "MessagePacker"),
             .product(name: "Logging", package: "swift-log"),
         ]),
+        .target(name: "NMTPWebSocket", dependencies: [
+            "NMTP",
+            .product(name: "NIO", package: "swift-nio"),
+            .product(name: "NIOHTTP1", package: "swift-nio"),
+            .product(name: "NIOWebSocket", package: "swift-nio"),
+        ]),
         .testTarget(name: "NMTPTests", dependencies: [
             "NMTP",
+            .product(name: "NIO", package: "swift-nio"),
+            .product(name: "NIOWebSocket", package: "swift-nio"),   // removed in Task 2
+        ]),
+        .testTarget(name: "NMTPWebSocketTests", dependencies: [
+            "NMTPWebSocket",
             .product(name: "NIO", package: "swift-nio"),
             .product(name: "NIOWebSocket", package: "swift-nio"),
         ]),
