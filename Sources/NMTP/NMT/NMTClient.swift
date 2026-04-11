@@ -2,7 +2,7 @@ import NIO
 
 public final class NMTClient: Sendable {
     public let targetAddress: SocketAddress
-    public let pushes: AsyncStream<Matter>
+    public let pushes: MatterStream
 
     private let channel: Channel
     private let pendingRequests: PendingRequests
@@ -13,7 +13,7 @@ public final class NMTClient: Sendable {
         targetAddress: SocketAddress,
         channel: Channel,
         pendingRequests: PendingRequests,
-        pushes: AsyncStream<Matter>,
+        pushes: MatterStream,
         pushContinuation: AsyncStream<Matter>.Continuation,
         ownedEventLoopGroup: MultiThreadedEventLoopGroup?
     ) {
@@ -40,7 +40,7 @@ extension NMTClient {
         let elg = eventLoopGroup ?? owned!
         let pendingRequests = PendingRequests()
         var cont: AsyncStream<Matter>.Continuation!
-        let pushes = AsyncStream<Matter> { cont = $0 }
+        let pushesStream = AsyncStream<Matter> { cont = $0 }
         let inboundHandler = NMTClientInboundHandler(
             pendingRequests: pendingRequests, pushContinuation: cont
         )
@@ -57,7 +57,7 @@ extension NMTClient {
                 targetAddress: address,
                 channel: channel,
                 pendingRequests: pendingRequests,
-                pushes: pushes,
+                pushes: MatterStream(pushesStream),
                 pushContinuation: cont,
                 ownedEventLoopGroup: owned
             )
