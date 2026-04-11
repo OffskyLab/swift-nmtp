@@ -91,7 +91,7 @@ final class DirectEchoHandler: ChannelDuplexHandler, @unchecked Sendable {
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let req = unwrapInboundIn(data)
-        let reply = Matter(type: .reply, flags: req.flags, matterID: req.matterID, body: req.body)
+        let reply = Matter(behavior: .reply, matterID: req.matterID, payload: req.payload)
         context.writeAndFlush(wrapOutboundOut(reply), promise: nil)
     }
 
