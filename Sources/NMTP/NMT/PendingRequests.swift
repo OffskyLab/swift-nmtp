@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-final class PendingRequests: Sendable {
+package final class PendingRequests: Sendable {
     private let waiting = Mutex<[UUID: CheckedContinuation<Matter, Error>]>([:])
 
     func register(id: UUID, continuation: CheckedContinuation<Matter, Error>) {
