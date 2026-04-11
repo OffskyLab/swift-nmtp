@@ -1,4 +1,4 @@
-import NIO
+@preconcurrency import NIO
 import NIOExtras
 
 /// TCP transport with optional application-layer heartbeat.
@@ -36,12 +36,19 @@ public struct TCPTransport: NMTTransport {
         let idleTime = heartbeatInterval.timeAmount
         let limit = missedLimit
         let build: @Sendable (Channel) -> EventLoopFuture<Void> = { ch in
-            ch.pipeline.addHandlers([
-                ByteToMessageHandler(MatterDecoder()),
-                MessageToByteHandler(MatterEncoder()),
-                IdleStateHandler(readTimeout: idleTime),
-                HeartbeatHandler(missedLimit: limit),
-            ]).flatMap { applicationPipeline(ch) }
+            // channelInitializer is called on the event loop; syncOperations.addHandlers
+            // takes [ChannelHandler] (no Sendable requirement) and runs synchronously.
+            do {
+                try ch.pipeline.syncOperations.addHandlers([
+                    ByteToMessageHandler(MatterDecoder()),
+                    MessageToByteHandler(MatterEncoder()),
+                    IdleStateHandler(readTimeout: idleTime),
+                    HeartbeatHandler(missedLimit: limit),
+                ])
+            } catch {
+                return ch.eventLoop.makeFailedFuture(error)
+            }
+            return applicationPipeline(ch)
         }
         if let tls {
             return addTLSServerHandler(to: channel, tls: tls, then: build)
@@ -64,12 +71,17 @@ public struct TCPTransport: NMTTransport {
             .channelOption(.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
                 let build: @Sendable (Channel) -> EventLoopFuture<Void> = { ch in
-                    ch.pipeline.addHandlers([
-                        ByteToMessageHandler(MatterDecoder()),
-                        MessageToByteHandler(MatterEncoder()),
-                        IdleStateHandler(readTimeout: idleTime),
-                        HeartbeatHandler(missedLimit: limit),
-                    ]).flatMap { applicationPipeline(ch) }
+                    do {
+                        try ch.pipeline.syncOperations.addHandlers([
+                            ByteToMessageHandler(MatterDecoder()),
+                            MessageToByteHandler(MatterEncoder()),
+                            IdleStateHandler(readTimeout: idleTime),
+                            HeartbeatHandler(missedLimit: limit),
+                        ])
+                    } catch {
+                        return ch.eventLoop.makeFailedFuture(error)
+                    }
+                    return applicationPipeline(ch)
                 }
                 if let tls {
                     return self.addTLSClientHandler(

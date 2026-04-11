@@ -1,4 +1,4 @@
-import NIO
+@preconcurrency import NIO
 
 /// Pluggable transport layer for NMT connections.
 ///
@@ -42,8 +42,13 @@ extension NMTTransport {
     ) -> EventLoopFuture<Void> {
         let promise = channel.eventLoop.makePromise(of: Void.self)
         promise.completeWithTask {
-            let tlsHandler = try await tls.makeServerHandler()
-            try await channel.pipeline.addHandler(tlsHandler).get()
+            // makeServerHandler() is async; we await it then schedule the synchronous
+            // addHandler call on the event loop via submit (takes non-@Sendable closure,
+            // so [ChannelHandler] doesn't need to satisfy Sendable).
+            let handler = NIOHandlerBox(try await tls.makeServerHandler())
+            try await channel.eventLoop.submit {
+                try channel.pipeline.syncOperations.addHandler(handler.value)
+            }.get()
             try await next(channel).get()
         }
         return promise.futureResult
@@ -59,10 +64,24 @@ extension NMTTransport {
     ) -> EventLoopFuture<Void> {
         let promise = channel.eventLoop.makePromise(of: Void.self)
         promise.completeWithTask {
-            let tlsHandler = try await tls.makeClientHandler(serverHostname: serverHostname)
-            try await channel.pipeline.addHandler(tlsHandler).get()
+            let handler = NIOHandlerBox(try await tls.makeClientHandler(serverHostname: serverHostname))
+            try await channel.eventLoop.submit {
+                try channel.pipeline.syncOperations.addHandler(handler.value)
+            }.get()
             try await next(channel).get()
         }
         return promise.futureResult
     }
+}
+
+// MARK: - Internal helper
+
+/// `@unchecked Sendable` box for `any ChannelHandler`.
+///
+/// NIO channel handlers are event-loop–confined and never shared across threads.
+/// This box lets us carry a handler across an `await` in `completeWithTask` without
+/// requiring a `Sendable` conformance that NIO intentionally omits.
+final class NIOHandlerBox: @unchecked Sendable {
+    let value: any ChannelHandler
+    init(_ value: any ChannelHandler) { self.value = value }
 }

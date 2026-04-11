@@ -1,6 +1,6 @@
-import NIO
-import NIOHTTP1
-import NIOWebSocket
+@preconcurrency import NIO
+@preconcurrency import NIOHTTP1
+@preconcurrency import NIOWebSocket
 import NMTP
 
 /// WebSocket transport for NMT connections.
@@ -40,11 +40,17 @@ public struct WebSocketTransport: NMTTransport {
                 return ch.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
             upgradePipelineHandler: { (ch: Channel, _: HTTPRequestHead) -> EventLoopFuture<Void> in
-                ch.pipeline.addHandlers([
-                    NMTWebSocketFrameHandler(isClient: false),
-                    ByteToMessageHandler(MatterDecoder()),
-                    MessageToByteHandler(MatterEncoder()),
-                ]).flatMap { applicationPipeline(ch) }
+                // upgradePipelineHandler is called on the event loop; syncOperations is safe.
+                do {
+                    try ch.pipeline.syncOperations.addHandlers([
+                        NMTWebSocketFrameHandler(isClient: false),
+                        ByteToMessageHandler(MatterDecoder()),
+                        MessageToByteHandler(MatterEncoder()),
+                    ])
+                } catch {
+                    return ch.eventLoop.makeFailedFuture(error)
+                }
+                return applicationPipeline(ch)
             }
         )
         if let tls {
@@ -82,29 +88,37 @@ public struct WebSocketTransport: NMTTransport {
                 let upgrader = NIOWebSocketClientUpgrader(
                     requestKey: requestKey,
                     upgradePipelineHandler: { (ch: Channel, _: HTTPResponseHead) -> EventLoopFuture<Void> in
-                        ch.pipeline.addHandlers([
-                            NMTWebSocketFrameHandler(isClient: true),
-                            ByteToMessageHandler(MatterDecoder()),
-                            MessageToByteHandler(MatterEncoder()),
-                        ]).flatMap { applicationPipeline(ch) }
-                            .map {
-                                signalCont.yield(true)
-                                signalCont.finish()
-                            }
+                        // upgradePipelineHandler is called on the event loop; syncOperations is safe.
+                        do {
+                            try ch.pipeline.syncOperations.addHandlers([
+                                NMTWebSocketFrameHandler(isClient: true),
+                                ByteToMessageHandler(MatterDecoder()),
+                                MessageToByteHandler(MatterEncoder()),
+                            ])
+                        } catch {
+                            return ch.eventLoop.makeFailedFuture(error)
+                        }
+                        return applicationPipeline(ch).map {
+                            signalCont.yield(true)
+                            signalCont.finish()
+                        }
                     }
                 )
-                let config: NIOHTTPClientUpgradeConfiguration = (
-                    upgraders: [upgrader],
-                    completionHandler: { _ in }
-                )
+                // Build config inline at the call site to avoid capturing a non-Sendable tuple.
                 if let tls {
                     return self.addTLSClientHandler(
                         to: channel, tls: tls, serverHostname: nil
                     ) { ch in
-                        ch.pipeline.addHTTPClientHandlers(withClientUpgrade: config)
+                        ch.pipeline.addHTTPClientHandlers(withClientUpgrade: (
+                            upgraders: [upgrader],
+                            completionHandler: { _ in }
+                        ))
                     }
                 } else {
-                    return channel.pipeline.addHTTPClientHandlers(withClientUpgrade: config)
+                    return channel.pipeline.addHTTPClientHandlers(withClientUpgrade: (
+                        upgraders: [upgrader],
+                        completionHandler: { _ in }
+                    ))
                 }
             }
             .connect(to: address)

@@ -1,5 +1,6 @@
 import Foundation
 import NIO
+import NIOExtras
 
 /// NIO channel handler that detects dead connections via application-layer heartbeats.
 ///
