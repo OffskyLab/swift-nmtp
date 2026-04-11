@@ -30,3 +30,20 @@ This package is the wire protocol layer for the Nebula framework. It runs on Lin
 - **Do not use Apple-only APIs** — no `import os`, no `OSAllocatedUnfairLock`, no macOS-only Foundation types.
 - **Use cross-platform Swift stdlib and open-source packages only.** Use `Synchronization.Mutex` for synchronous locking.
 - **macOS is development-only.** Minimum `.macOS(.v15)` is set solely for `Synchronization.Mutex` compatibility during local development.
+
+## WebSocket Transport — Naming Conventions
+
+Introduced 2026-04-10. Applies to all WebSocket-related code in `swift-nmtp`.
+
+| Concept | Name |
+|---------|------|
+| Transport selector enum | `NMTTransport` (`.tcp` / `.webSocket(path:)`) |
+| Frame bridge handler | `NMTWebSocketFrameHandler` (in `Sources/NMTP/Transport/`) |
+| Server pipeline builder | `NMTServer.buildWebSocketServerPipeline` (private static) |
+| Client connect helper | `NMTClient.connectWebSocket` (private static) |
+
+**Binary-only rule:** The WebSocket layer uses `.binary` frames exclusively. Text frames and control frames (ping, pong, close) are dropped by `NMTWebSocketFrameHandler` — NMT has its own heartbeat mechanism.
+
+**Masking rule:** Client → server frames are always masked (RFC 6455 §5.3). Server → client frames are never masked. `NMTWebSocketFrameHandler(isClient:)` controls this.
+
+**Heartbeat:** `IdleStateHandler`/`HeartbeatHandler` are present in the TCP pipeline but intentionally omitted from the WebSocket pipeline (out of scope for initial implementation).
