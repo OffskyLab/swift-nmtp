@@ -3,34 +3,28 @@
 //
 
 import Foundation
-import MessagePacker
-
-// MARK: - Body Encoding
 
 extension Matter {
 
-    public static func make<T: Encodable>(
-        type: MatterType,
-        body: T,
-        matterID: UUID = UUID(),
-        flags: UInt8 = 0
-    ) throws -> Matter {
-        let data = try MessagePackEncoder().encode(body)
-        return Matter(type: type, flags: flags, matterID: matterID, body: data)
+    /// Creates a Matter with a standard payload envelope (`[type: 2 bytes][body]`).
+    public static func make(
+        behavior: MatterBehavior,
+        type: UInt16 = 0,
+        ttl: UInt8 = 0,
+        body: Data = Data(),
+        matterID: UUID = UUID()
+    ) -> Matter {
+        let envelope = MatterPayload(type: type, body: body)
+        return Matter(behavior: behavior, ttl: ttl, matterID: matterID, payload: envelope.encoded)
     }
 
-    /// Create a reply Matter that matches the request's matterID.
-    public func reply<T: Encodable>(body: T) throws -> Matter {
-        let data = try MessagePackEncoder().encode(body)
-        return Matter(type: .reply, matterID: matterID, body: data)
+    /// Creates a Reply Matter matching this Matter's matterID.
+    public func makeReply(payload: Data = Data()) -> Matter {
+        Matter(behavior: .reply, ttl: 0, matterID: matterID, payload: payload)
     }
-}
 
-// MARK: - Body Decoding
-
-extension Matter {
-
-    public func decodeBody<T: Decodable>(_ type: T.Type) throws -> T {
-        return try MessagePackDecoder().decode(type, from: body)
+    /// Parses this Matter's payload as a `MatterPayload` envelope.
+    public func decodePayload() throws -> MatterPayload {
+        try MatterPayload(data: payload)
     }
 }

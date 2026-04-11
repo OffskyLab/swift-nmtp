@@ -5,10 +5,10 @@ import NIO
 import Synchronization
 @testable import NMTP
 
-/// Echoes each incoming matter back as a `.reply` with the same matterID and body.
+/// Echoes each incoming matter back as a `.reply` with the same matterID and payload.
 struct EchoHandler: NMTHandler {
     func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        Matter(type: .reply, matterID: matter.matterID, body: matter.body)
+        Matter(behavior: .reply, matterID: matter.matterID, payload: matter.payload)
     }
 }
 
@@ -18,7 +18,7 @@ struct EchoHandler: NMTHandler {
 struct PushHandler: NMTHandler {
     let pushBody: Data
     func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        channel.writeAndFlush(Matter(type: .reply, body: pushBody), promise: nil)
+        channel.writeAndFlush(Matter(behavior: .reply, payload: pushBody), promise: nil)
         return nil
     }
 }

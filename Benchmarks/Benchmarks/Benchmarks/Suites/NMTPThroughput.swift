@@ -17,7 +17,7 @@ func registerNMTPThroughput() {
             // NIO handles every round-trip on its own event-loop threads so
             // future.wait() inside syncRequest() never deadlocks.
             closure: { (benchmark: Benchmark, echo: NMTPEchoServer) in
-                let matter = Matter(type: .call, body: body)
+                let matter = Matter(behavior: .command, payload: body)
                 for _ in benchmark.scaledIterations {
                     do {
                         _ = try echo.syncRequest(matter)

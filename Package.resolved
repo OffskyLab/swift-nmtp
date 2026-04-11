@@ -1,15 +1,6 @@
 {
-  "originHash" : "711a7757a09e015ded2c64f073e03878190a2a40a391ae0ccbf7877a4c410eb4",
+  "originHash" : "143106abe752a9733282566adf7b30a05509a156c9f278b7691613c8d58477b5",
   "pins" : [
-    {
-      "identity" : "messagepacker",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/hirotakan/MessagePacker.git",
-      "state" : {
-        "revision" : "4d8346c6bc579347e4df0429493760691c5aeca2",
-        "version" : "0.4.7"
-      }
-    },
     {
       "identity" : "swift-algorithms",
       "kind" : "remoteSourceControl",
