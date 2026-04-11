@@ -19,7 +19,6 @@ final class PeerDispatcherFactoryTests: XCTestCase {
         let listener = try await PeerListener.bind(
             on: .makeAddressResolvingHost("127.0.0.1", port: 0)
         )
-        defer { Task { try? await listener.close() } }
 
         let listenerPeerTask = Task<Peer, Error> {
             for await peer in listener.peers { return peer }
@@ -27,10 +26,7 @@ final class PeerDispatcherFactoryTests: XCTestCase {
         }
 
         let clientDispatcher = try await PeerDispatcher.connect(to: listener.address)
-        defer { Task { try? await clientDispatcher.peer.close() } }
-
         let serverPeer = try await listenerPeerTask.value
-        defer { Task { try? await serverPeer.close() } }
 
         let serverDispatcher = PeerDispatcher(peer: serverPeer)
         serverDispatcher.register(FactoryPing.self) { ping, _ in
@@ -39,23 +35,27 @@ final class PeerDispatcherFactoryTests: XCTestCase {
         }
 
         let runTask = Task {
-            async let clientRun: Void = { try await clientDispatcher.run() }()
-            async let serverRun: Void = { try await serverDispatcher.run() }()
-            _ = try await (clientRun, serverRun)
+            async let clientRun: Void = { _ = try? await clientDispatcher.run() }()
+            async let serverRun: Void = { _ = try? await serverDispatcher.run() }()
+            _ = await (clientRun, serverRun)
         }
-        defer { runTask.cancel() }
 
         let reply = try await clientDispatcher.request(
             FactoryPing(body: "hello"),
             expecting: FactoryPong.self,
             timeout: .seconds(1)
         )
-
         XCTAssertEqual(reply.body, "world")
+
+        // Explicit ordered cleanup
+        runTask.cancel()
+        try? await clientDispatcher.peer.close()
+        try? await serverPeer.close()
+        try? await listener.close()
     }
 
     func testListenFactoryHandlesTypedRequestFromDispatcherClient() async throws {
-        let listener = try await PeerDispatcher.listen(
+        let serverListener = try await PeerDispatcher.listen(
             on: .makeAddressResolvingHost("127.0.0.1", port: 0)
         ) { dispatcher in
             dispatcher.register(FactoryPing.self) { ping, _ in
@@ -63,20 +63,21 @@ final class PeerDispatcherFactoryTests: XCTestCase {
                 return FactoryPong(body: "listener")
             }
         }
-        defer { Task { try? await listener.close() } }
 
-        let listenTask = Task { try? await listener.run() }
-        defer { listenTask.cancel() }
+        let listenTask = Task { try? await serverListener.run() }
 
-        let clientDispatcher = try await PeerDispatcher.connect(to: listener.address)
-        defer { Task { try? await clientDispatcher.peer.close() } }
+        let clientDispatcher = try await PeerDispatcher.connect(to: serverListener.address)
 
         let reply = try await clientDispatcher.request(
             FactoryPing(body: "client"),
             expecting: FactoryPong.self,
             timeout: .seconds(1)
         )
-
         XCTAssertEqual(reply.body, "listener")
+
+        // Explicit ordered cleanup
+        listenTask.cancel()
+        try? await clientDispatcher.peer.close()
+        try? await serverListener.close()
     }
 }

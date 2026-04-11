@@ -7,19 +7,15 @@ public final class PeerDispatcherListener: Sendable {
 
     private let listener: PeerListener
     private let configure: @Sendable (PeerDispatcher) -> Void
-    private let dispatcherTasks = Mutex<[Task<Void, Never>]>([])
+    private let dispatcherTasks = Mutex<[UInt64: Task<Void, Never>]>([:])
+    private let nextTaskID = Mutex<UInt64>(0)
 
-    init(
-        listener: PeerListener,
-        configure: @escaping @Sendable (PeerDispatcher) -> Void
-    ) {
+    package init(listener: PeerListener, configure: @escaping @Sendable (PeerDispatcher) -> Void) {
         self.address = listener.address
         self.listener = listener
         self.configure = configure
     }
 }
-
-// MARK: - Run / Close
 
 extension PeerDispatcherListener {
     public func run() async throws {
@@ -27,20 +23,26 @@ extension PeerDispatcherListener {
             let dispatcher = PeerDispatcher(peer: peer)
             configure(dispatcher)
 
-            let task = Task<Void, Never> {
-                _ = try? await dispatcher.run()
+            let id = nextTaskID.withLock { id in
+                defer { id &+= 1 }
+                return id
             }
-            dispatcherTasks.withLock { $0.append(task) }
+
+            let task = Task<Void, Never> { [self] in
+                _ = try? await dispatcher.run()
+                dispatcherTasks.withLock { $0.removeValue(forKey: id) }
+            }
+            dispatcherTasks.withLock { $0[id] = task }
         }
     }
 
     public func close() async throws {
-        let tasks = dispatcherTasks.withLock {
-            let tasks = $0
-            $0.removeAll()
-            return tasks
+        let tasks = dispatcherTasks.withLock { tasks in
+            let copy = tasks
+            tasks.removeAll()
+            return copy
         }
-        tasks.forEach { $0.cancel() }
+        tasks.values.forEach { $0.cancel() }
         try await listener.close()
     }
 }
