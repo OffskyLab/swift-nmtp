@@ -91,17 +91,20 @@ struct MatterBehaviorTests {
     }
 
     @Test("MatterBehavior round-trips through UInt8")
-    func behaviorRoundTrip() {
+    func behaviorRoundTrip() throws {
         for raw: UInt8 in 0x00...0x04 {
-            let b = MatterBehavior(rawValue: raw)
-            #expect(b != nil)
-            #expect(b!.rawValue == raw)
+            let b = try #require(MatterBehavior(rawValue: raw))
+            #expect(b.rawValue == raw)
         }
         #expect(MatterBehavior(rawValue: 0x05) == nil)
     }
+}
+
+@Suite("NMTPConstants Tests")
+struct NMTPConstantsTests {
 
     @Test("NMTPConstants values")
-    func nmtpConstants() {
+    func nmtpConstantsValues() {
         #expect(NMTPConstants.maxEventTTL     == 15)
         #expect(NMTPConstants.defaultEventTTL == 7)
         #expect(NMTPConstants.defaultEventTTL < NMTPConstants.maxEventTTL)
