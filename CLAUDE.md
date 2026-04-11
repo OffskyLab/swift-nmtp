@@ -42,7 +42,7 @@ Introduced 2026-04-10. Applies to all WebSocket-related code in `swift-nmtp`.
 | Server pipeline builder | `NMTServer.buildWebSocketServerPipeline` (private static) |
 | Client connect helper | `NMTClient.connectWebSocket` (private static) |
 
-**Binary-only rule:** The WebSocket layer uses `.binary` frames exclusively. Text frames and control frames (ping, pong, close) are dropped by `NMTWebSocketFrameHandler` — NMT has its own heartbeat mechanism.
+**Binary-only rule:** The WebSocket layer uses `.binary` frames exclusively. Any frame whose opcode is not `.binary` (including text, continuation, ping, pong, and close) is silently dropped on the inbound path by `NMTWebSocketFrameHandler`. Heartbeat handling for WebSocket connections is out of scope for this implementation; `IdleStateHandler`/`HeartbeatHandler` are not added to the WebSocket pipeline.
 
 **Masking rule:** Client → server frames are always masked (RFC 6455 §5.3). Server → client frames are never masked. `NMTWebSocketFrameHandler(isClient:)` controls this.
 
