@@ -12,7 +12,7 @@ extension Matter {
         body: Data = Data(),
         matterID: UUID = UUID()
     ) -> Matter {
-        let envelope = MatterPayload(type: typeID, body: body)
+        let envelope = MatterPayload(typeID: typeID, body: body)
         return Matter(type: type, ttl: ttl, matterID: matterID, payload: envelope.encoded)
     }
 
