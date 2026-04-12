@@ -8,7 +8,7 @@ import Synchronization
 /// Echoes each incoming matter back as a `.reply` with the same matterID and payload.
 struct EchoHandler: NMTHandler {
     func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        Matter(behavior: .reply, matterID: matter.matterID, payload: matter.payload)
+        Matter(type: .reply, matterID: matter.matterID, payload: matter.payload)
     }
 }
 
@@ -18,7 +18,7 @@ struct EchoHandler: NMTHandler {
 struct PushHandler: NMTHandler {
     let pushBody: Data
     func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        channel.writeAndFlush(Matter(behavior: .reply, payload: pushBody), promise: nil)
+        channel.writeAndFlush(Matter(type: .reply, payload: pushBody), promise: nil)
         return nil
     }
 }

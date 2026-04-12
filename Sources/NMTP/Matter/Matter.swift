@@ -1,41 +1,39 @@
-//
-//  Matter.swift
-//
+// Sources/NMTP/Matter/Matter.swift
 
 import Foundation
 
 // NBLA
 public let NMTPMagic: [UInt8] = [0x4E, 0x42, 0x4C, 0x41]
 
-/// The unit transmitted between nodes in the NMTP protocol (NMT — Nebula Matter Transfer).
+/// The unit transmitted between nodes in the NMTP protocol.
 ///
 /// Header layout (27 bytes, fixed):
 /// ```
 /// Magic    [0..3]   = "NBLA"  (4 bytes)
 /// Version  [4]      = UInt8   (1 byte)
 /// TTL      [5]      = UInt8   (1 byte) — Event ripple hop count; 0x00 for others
-/// Behavior [6]      = UInt8   (1 byte) — see MatterBehavior
+/// Type     [6]      = UInt8   (1 byte) — see MatterType
 /// MatterID [7..22]  = UUID    (16 bytes)
 /// Length   [23..26] = UInt32  (4 bytes, big-endian)
-/// Payload  [27..]   = [Type:2 bytes][Body:N bytes] — see MatterPayload
+/// Payload  [27..]   = [TypeID:2 bytes][Body:N bytes] — see MatterPayload
 /// ```
 public struct Matter: Sendable {
     public static let headerSize = 27
 
     public let version: UInt8
-    public let behavior: MatterBehavior
+    public let type: MatterType
     public let ttl: UInt8
     public let matterID: UUID
     public let payload: Data
 
     public init(
-        behavior: MatterBehavior,
+        type: MatterType,
         ttl: UInt8 = 0,
         matterID: UUID = UUID(),
         payload: Data = Data()
     ) {
         self.version = 1
-        self.behavior = behavior
+        self.type = type
         self.ttl = ttl
         self.matterID = matterID
         self.payload = payload
@@ -52,7 +50,7 @@ extension Matter {
         bytes.append(contentsOf: NMTPMagic)
         bytes.append(version)
         bytes.append(ttl)
-        bytes.append(behavior.rawValue)
+        bytes.append(type.rawValue)
         bytes.append(contentsOf: matterID.bytes)
         bytes.append(contentsOf: UInt32(payload.count).bytes())
         bytes.append(contentsOf: payload)
@@ -72,8 +70,8 @@ extension Matter {
         let version = bytes[4]
         let ttl = bytes[5]
 
-        guard let behavior = MatterBehavior(rawValue: bytes[6]) else {
-            throw NMTPError.invalidMatter("Unknown behavior: \(bytes[6])")
+        guard let matterType = MatterType(rawValue: bytes[6]) else {
+            throw NMTPError.invalidMatter("Unknown type: \(bytes[6])")
         }
 
         let matterID = try UUID(bytes: Array(bytes[7..<23]))
@@ -87,7 +85,7 @@ extension Matter {
 
         self.version = version
         self.ttl = ttl
-        self.behavior = behavior
+        self.type = matterType
         self.matterID = matterID
         self.payload = payload
     }

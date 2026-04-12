@@ -1,26 +1,24 @@
-//
-//  Matter+Coding.swift
-//
+// Sources/NMTP/Matter/Matter+Coding.swift
 
 import Foundation
 
 extension Matter {
 
-    /// Creates a Matter with a standard payload envelope (`[type: 2 bytes][body]`).
+    /// Creates a Matter with a standard payload envelope (`[typeID: 2 bytes][body]`).
     public static func make(
-        behavior: MatterBehavior,
-        type: UInt16 = 0,
+        type: MatterType,
+        typeID: UInt16 = 0,
         ttl: UInt8 = 0,
         body: Data = Data(),
         matterID: UUID = UUID()
     ) -> Matter {
-        let envelope = MatterPayload(type: type, body: body)
-        return Matter(behavior: behavior, ttl: ttl, matterID: matterID, payload: envelope.encoded)
+        let envelope = MatterPayload(type: typeID, body: body)
+        return Matter(type: type, ttl: ttl, matterID: matterID, payload: envelope.encoded)
     }
 
     /// Creates a Reply Matter matching this Matter's matterID.
     public func makeReply(payload: Data = Data()) -> Matter {
-        Matter(behavior: .reply, ttl: 0, matterID: matterID, payload: payload)
+        Matter(type: .reply, ttl: 0, matterID: matterID, payload: payload)
     }
 
     /// Parses this Matter's payload as a `MatterPayload` envelope.

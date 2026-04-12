@@ -1,13 +1,11 @@
-//
-//  MatterBehavior.swift
-//
+// Sources/NMTP/Matter/MatterType.swift
 
-/// Behavior classification carried in every Matter header (byte[6]).
+/// Wire-level frame classification carried in every Matter header (byte[6]).
 ///
-/// NMTP uses this field to determine routing and propagation rules.
-/// The class-2 type (what *kind* of command/query/event) lives in the
+/// NMTP uses this to determine routing and propagation rules.
+/// The class-2 type (what *kind* of Nebula operation) lives in the
 /// first 2 bytes of the payload, not here.
-public enum MatterBehavior: UInt8, Sendable {
+public enum MatterType: UInt8, Sendable {
     /// NMTP-internal: heartbeat probe/reply. Never forwarded to application layer.
     case heartbeat = 0x00
     /// Requires something to happen. Has a target. Expects a Reply.
