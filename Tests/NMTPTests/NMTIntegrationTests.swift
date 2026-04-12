@@ -12,11 +12,11 @@ final class NMTIntegrationTests: XCTestCase {
         defer { Task { try await client.close() } }
 
         let sentPayload = Data("hello".utf8)
-        let request = Matter(behavior: .command, payload: sentPayload)
+        let request = Matter(type: .command, payload: sentPayload)
         let reply = try await client.request(matter: request)
 
         XCTAssertEqual(reply.matterID, request.matterID)
-        XCTAssertEqual(reply.behavior, MatterBehavior.reply)
+        XCTAssertEqual(reply.type, MatterType.reply)
         XCTAssertEqual(reply.payload, sentPayload)
     }
 
@@ -30,7 +30,7 @@ final class NMTIntegrationTests: XCTestCase {
         let client = try await NMTClient.connect(to: server.address)
         defer { Task { try await client.close() } }
 
-        let trigger = Matter(behavior: .command, payload: Data())
+        let trigger = Matter(type: .command, payload: Data())
         client.fire(matter: trigger)
 
         var received: Matter?
@@ -80,7 +80,7 @@ final class RequestTimeoutTests: XCTestCase {
         let address = server.localAddress!
         let client = try await NMTClient.connect(to: address, eventLoopGroup: elg)
 
-        let request = Matter(behavior: .command, payload: Data("ping".utf8))
+        let request = Matter(type: .command, payload: Data("ping".utf8))
         do {
             _ = try await client.request(matter: request, timeout: .milliseconds(100))
             XCTFail("Expected NMTPError.timeout")
@@ -127,7 +127,7 @@ final class HeartbeatTests: XCTestCase {
 
         do {
             _ = try await client.request(
-                matter: Matter(behavior: .command, payload: Data()),
+                matter: Matter(type: .command, payload: Data()),
                 timeout: .milliseconds(50)
             )
             XCTFail("Expected a connection error")
@@ -159,7 +159,7 @@ final class HeartbeatTests: XCTestCase {
 
         for i in 0..<5 {
             let body = Data("msg-\(i)".utf8)
-            let reply = try await client.request(matter: Matter(behavior: .command, payload: body))
+            let reply = try await client.request(matter: Matter(type: .command, payload: body))
             XCTAssertEqual(reply.payload, body)
         }
     }
@@ -173,7 +173,7 @@ final class GracefulShutdownTests: XCTestCase {
         let delay: Duration
         func handle(matter: Matter, channel: Channel) async throws -> Matter? {
             try await Task.sleep(for: delay)
-            return Matter(behavior: .reply, matterID: matter.matterID, payload: matter.payload)
+            return Matter(type: .reply, matterID: matter.matterID, payload: matter.payload)
         }
     }
 
@@ -185,7 +185,7 @@ final class GracefulShutdownTests: XCTestCase {
 
         let client = try await NMTClient.connect(to: server.address)
 
-        async let replyTask = client.request(matter: Matter(behavior: .command, payload: Data("slow".utf8)))
+        async let replyTask = client.request(matter: Matter(type: .command, payload: Data("slow".utf8)))
 
         try await Task.sleep(for: .milliseconds(50))
 
@@ -208,7 +208,7 @@ final class GracefulShutdownTests: XCTestCase {
         let clientA = try await NMTClient.connect(to: server.address)
         let clientB = try await NMTClient.connect(to: server.address)
 
-        Task { _ = try? await clientA.request(matter: Matter(behavior: .command, payload: Data())) }
+        Task { _ = try? await clientA.request(matter: Matter(type: .command, payload: Data())) }
 
         try await Task.sleep(for: .milliseconds(50))
 
@@ -218,7 +218,7 @@ final class GracefulShutdownTests: XCTestCase {
 
         do {
             _ = try await clientB.request(
-                matter: Matter(behavior: .command, payload: Data()),
+                matter: Matter(type: .command, payload: Data()),
                 timeout: .milliseconds(200)
             )
             XCTFail("Expected a connection error during drain")
@@ -242,7 +242,7 @@ final class PendingRequestsTests: XCTestCase {
 
     func testFulfillReturnsCorrectMatter() async throws {
         let pending = PendingRequests()
-        let expected = Matter(behavior: .reply, payload: Data("hello".utf8))
+        let expected = Matter(type: .reply, payload: Data("hello".utf8))
 
         let received: Matter = try await withCheckedThrowingContinuation { continuation in
             pending.register(id: expected.matterID, continuation: continuation)
@@ -255,7 +255,7 @@ final class PendingRequestsTests: XCTestCase {
 
     func testFulfillUnknownIdReturnsFalse() {
         let pending = PendingRequests()
-        let unknown = Matter(behavior: .command, payload: Data())
+        let unknown = Matter(type: .command, payload: Data())
         XCTAssertFalse(pending.fulfill(unknown))
     }
 

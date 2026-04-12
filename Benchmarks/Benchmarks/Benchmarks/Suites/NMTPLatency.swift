@@ -16,7 +16,7 @@ func registerNMTPLatency() {
                 scalingFactor: .kilo
             ),
             closure: { (benchmark: Benchmark, echo: NMTPEchoServer) in
-                let matter = Matter(behavior: .command, payload: body)
+                let matter = Matter(type: .command, payload: body)
                 for _ in benchmark.scaledIterations {
                     do {
                         _ = try echo.syncRequest(matter)

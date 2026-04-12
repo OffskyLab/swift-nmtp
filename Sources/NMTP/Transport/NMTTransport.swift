@@ -49,7 +49,10 @@ extension NMTTransport {
             try await channel.eventLoop.submit {
                 try channel.pipeline.syncOperations.addHandler(handler.value)
             }.get()
-            try await next(channel).get()
+            // next() commonly mutates the pipeline via syncOperations, which
+            // asserts inEventLoop. completeWithTask runs this closure on the
+            // Swift concurrency executor, so hop back to the event loop.
+            try await channel.eventLoop.flatSubmit { next(channel) }.get()
         }
         return promise.futureResult
     }
@@ -68,7 +71,7 @@ extension NMTTransport {
             try await channel.eventLoop.submit {
                 try channel.pipeline.syncOperations.addHandler(handler.value)
             }.get()
-            try await next(channel).get()
+            try await channel.eventLoop.flatSubmit { next(channel) }.get()
         }
         return promise.futureResult
     }

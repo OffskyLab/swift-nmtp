@@ -16,11 +16,11 @@ final class PeerConnectTests: XCTestCase {
         let peer = try await Peer.connect(to: server.address)
         defer { Task { try? await peer.close() } }
 
-        let matter = Matter(behavior: .command, payload: Data("hello".utf8))
+        let matter = Matter(type: .command, payload: Data("hello".utf8))
         let reply = try await peer.request(matter: matter)
 
         XCTAssertEqual(reply.matterID, matter.matterID)
-        XCTAssertEqual(reply.behavior, .reply)
+        XCTAssertEqual(reply.type, .reply)
         XCTAssertEqual(reply.payload, Data("hello".utf8))
     }
 
@@ -30,7 +30,7 @@ final class PeerConnectTests: XCTestCase {
         struct PushHandler: NMTHandler {
             let pushPayload: Data
             func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-                channel.writeAndFlush(Matter(behavior: .reply, payload: pushPayload), promise: nil)
+                channel.writeAndFlush(Matter(type: .reply, payload: pushPayload), promise: nil)
                 return nil
             }
         }
@@ -44,7 +44,7 @@ final class PeerConnectTests: XCTestCase {
         let peer = try await Peer.connect(to: server.address)
         defer { Task { try? await peer.close() } }
 
-        peer.fire(matter: Matter(behavior: .command, payload: Data()))
+        peer.fire(matter: Matter(type: .command, payload: Data()))
 
         let received = try await withThrowingTaskGroup(of: Matter?.self) { group in
             group.addTask {
@@ -82,6 +82,6 @@ final class PeerConnectTests: XCTestCase {
 
 private struct EchoHandler: NMTHandler {
     func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-        Matter(behavior: .reply, matterID: matter.matterID, payload: matter.payload)
+        Matter(type: .reply, matterID: matter.matterID, payload: matter.payload)
     }
 }

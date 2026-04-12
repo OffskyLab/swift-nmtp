@@ -54,7 +54,7 @@ final class PeerDispatcherTests: XCTestCase {
 
         // Server sends a Ping encoded as Matter
         let pingBody = try JSONEncoder().encode(Ping(body: "hello"))
-        let pingMatter = Matter.make(behavior: .command, type: Ping.messageType, body: pingBody)
+        let pingMatter = Matter.make(type: .command, typeID: Ping.messageType, body: pingBody)
         let replyMatter = try await serverPeer.request(matter: pingMatter)
 
         await fulfillment(of: [expectation], timeout: 5)
@@ -92,12 +92,12 @@ final class PeerDispatcherTests: XCTestCase {
 
         // Send unregistered Notify — should be dropped silently
         let notifyBody = try JSONEncoder().encode(Notify(text: "ignored"))
-        let notifyMatter = Matter.make(behavior: .command, type: Notify.messageType, body: notifyBody)
+        let notifyMatter = Matter.make(type: .command, typeID: Notify.messageType, body: notifyBody)
         serverPeer.fire(matter: notifyMatter)
 
         // A successful round-trip after the dropped message proves the dispatcher stayed alive.
         let pingBody = try JSONEncoder().encode(Ping(body: "still alive"))
-        let pingMatter = Matter.make(behavior: .command, type: Ping.messageType, body: pingBody)
+        let pingMatter = Matter.make(type: .command, typeID: Ping.messageType, body: pingBody)
         let replyMatter = try await serverPeer.request(matter: pingMatter, timeout: .seconds(1))
         let replyPayload = try replyMatter.decodePayload()
         let pong = try JSONDecoder().decode(Pong.self, from: replyPayload.body)
@@ -128,7 +128,7 @@ final class PeerDispatcherTests: XCTestCase {
         defer { Task { try? await serverPeer.close() } }
 
         let notifyBody = try JSONEncoder().encode(Notify(text: "one-way"))
-        let notifyMatter = Matter.make(behavior: .command, type: Notify.messageType, body: notifyBody)
+        let notifyMatter = Matter.make(type: .command, typeID: Notify.messageType, body: notifyBody)
 
         do {
             _ = try await serverPeer.request(matter: notifyMatter, timeout: .milliseconds(200))

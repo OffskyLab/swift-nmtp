@@ -8,8 +8,8 @@ final class MatterStreamTests: XCTestCase {
         let stream = AsyncStream<Matter> { cont = $0 }
         let matterStream = MatterStream(stream)
 
-        let m1 = Matter(behavior: .command, payload: Data("a".utf8))
-        let m2 = Matter(behavior: .reply, payload: Data("b".utf8))
+        let m1 = Matter(type: .command, payload: Data("a".utf8))
+        let m2 = Matter(type: .reply, payload: Data("b".utf8))
         cont.yield(m1)
         cont.yield(m2)
         cont.finish()

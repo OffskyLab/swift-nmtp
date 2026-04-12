@@ -90,14 +90,14 @@ final class WebSocketIntegrationTests: XCTestCase {
 
     private struct EchoHandler: NMTHandler {
         func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-            Matter(behavior: .reply, matterID: matter.matterID, payload: matter.payload)
+            Matter(type: .reply, matterID: matter.matterID, payload: matter.payload)
         }
     }
 
     private struct PushHandler: NMTHandler {
         let pushBody: Data
         func handle(matter: Matter, channel: Channel) async throws -> Matter? {
-            channel.writeAndFlush(Matter(behavior: .reply, payload: pushBody), promise: nil)
+            channel.writeAndFlush(Matter(type: .reply, payload: pushBody), promise: nil)
             return nil
         }
     }
@@ -139,11 +139,11 @@ final class WebSocketIntegrationTests: XCTestCase {
         defer { Task { try await client.close() } }
 
         let sentBody = Data("hello-ws".utf8)
-        let request = Matter(behavior: .command, payload: sentBody)
+        let request = Matter(type: .command, payload: sentBody)
         let reply = try await client.request(matter: request)
 
         XCTAssertEqual(reply.matterID, request.matterID)
-        XCTAssertEqual(reply.behavior, .reply)
+        XCTAssertEqual(reply.type, .reply)
         XCTAssertEqual(reply.payload, sentBody)
     }
 
@@ -159,7 +159,7 @@ final class WebSocketIntegrationTests: XCTestCase {
         let client = try await NMTClient.connect(to: server.address, transport: WebSocketTransport())
         defer { Task { try await client.close() } }
 
-        client.fire(matter: Matter(behavior: .command, payload: Data()))
+        client.fire(matter: Matter(type: .command, payload: Data()))
 
         let received: Matter? = try await withThrowingTaskGroup(of: Matter?.self) { group in
             group.addTask {
@@ -197,7 +197,7 @@ final class WebSocketIntegrationTests: XCTestCase {
         defer { Task { try await client.close() } }
 
         let sentBody = Data("tls-ws".utf8)
-        let reply = try await client.request(matter: Matter(behavior: .command, payload: sentBody))
+        let reply = try await client.request(matter: Matter(type: .command, payload: sentBody))
         XCTAssertEqual(reply.payload, sentBody)
     }
 
@@ -212,7 +212,7 @@ final class WebSocketIntegrationTests: XCTestCase {
         defer { Task { try await client.close() } }
 
         let sentBody = Data("tcp-default".utf8)
-        let reply = try await client.request(matter: Matter(behavior: .command, payload: sentBody))
+        let reply = try await client.request(matter: Matter(type: .command, payload: sentBody))
         XCTAssertEqual(reply.payload, sentBody)
     }
 }

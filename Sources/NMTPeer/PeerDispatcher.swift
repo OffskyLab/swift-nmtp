@@ -29,8 +29,8 @@ extension PeerDispatcher {
             guard let reply = try await handler(message, peer) else { return }
             let replyBody = try JSONEncoder().encode(reply)
             let replyMatter = Matter.make(
-                behavior: .reply,
-                type: reply.messageType,
+                type: .reply,
+                typeID: reply.messageType,
                 body: replyBody,
                 matterID: matter.matterID
             )
@@ -54,7 +54,7 @@ extension PeerDispatcher {
                 } catch {
                     continue
                 }
-                let handler = handlers.withLock { $0[payload.type] }
+                let handler = handlers.withLock { $0[payload.typeID] }
                 guard let handler else { continue }
                 let m = matter
                 let body = payload.body
@@ -79,11 +79,11 @@ extension PeerDispatcher {
         timeout: Duration = .seconds(30)
     ) async throws -> R {
         let body = try JSONEncoder().encode(message)
-        let matter = Matter.make(behavior: .command, type: M.messageType, body: body)
+        let matter = Matter.make(type: .command, typeID: M.messageType, body: body)
         let replyMatter = try await peer.request(matter: matter, timeout: timeout)
         let replyPayload = try replyMatter.decodePayload()
-        guard replyPayload.type == R.messageType else {
-            throw NMTPError.unexpectedReplyType(expected: R.messageType, actual: replyPayload.type)
+        guard replyPayload.typeID == R.messageType else {
+            throw NMTPError.unexpectedReplyType(expected: R.messageType, actual: replyPayload.typeID)
         }
         return try JSONDecoder().decode(R.self, from: replyPayload.body)
     }

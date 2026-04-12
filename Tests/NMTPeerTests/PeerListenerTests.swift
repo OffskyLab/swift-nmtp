@@ -23,7 +23,7 @@ final class PeerListenerTests: XCTestCase {
         let echoTask = Task {
             for await matter in connector.incoming {
                 connector.fire(matter: Matter(
-                    behavior: .reply,
+                    type: .reply,
                     matterID: matter.matterID,
                     payload: matter.payload
                 ))
@@ -33,7 +33,7 @@ final class PeerListenerTests: XCTestCase {
 
         let lPeer = try await listenerPeerTask.value
 
-        let matter = Matter(behavior: .query, payload: Data("symmetric".utf8))
+        let matter = Matter(type: .query, payload: Data("symmetric".utf8))
         let reply = try await lPeer.request(matter: matter)
 
         XCTAssertEqual(reply.matterID, matter.matterID)
