@@ -61,7 +61,7 @@ struct NMTPConcurrentEchoServer: Sendable {
     /// the promises — no cooperative thread pool slots consumed.
     func syncConcurrentRequest(body: Data) throws {
         let futures: [EventLoopFuture<Matter>] = clients.map { (channel, handler) in
-            let matter = Matter(behavior: .command, payload: body)
+            let matter = Matter(type: .command, payload: body)
             let promise = channel.eventLoop.makePromise(of: Matter.self)
             handler.register(promise, id: matter.matterID)
             channel.writeAndFlush(matter, promise: nil)
